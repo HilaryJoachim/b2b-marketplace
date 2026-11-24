@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Image from "next/image";
 import CategoryCard from "@/components/CategoryCard";
 import FeaturedProductCard from "@/components/FeaturedProductCard";
@@ -15,7 +15,7 @@ import CategorySidebarSkeleton from "@/components/skeletons/CategorySidebarSkele
 import EmptyCategory from "@/components/empty/EmptyCategory";
 import EmptyProducts from "@/components/empty/EmptyProducts";
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -191,6 +191,18 @@ export default function Home() {
         <CtaSection />
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#f36a1b] border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }
 

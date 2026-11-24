@@ -12,8 +12,9 @@ import SupplierTrustCard from "@/components/supplier/SupplierTrustCard";
 import PriceDisplay from "@/components/PriceDisplay";
 import ProductImageGallery from "@/components/product/ProductImageGallery";
 
-export default async function ProductPage({ params }: { params: { slug: string } }) {
-  const product = await getProductBySlug(params.slug);
+export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const product = await getProductBySlug(slug);
   
   if (!product) return notFound();
 
@@ -59,7 +60,11 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 )}
               </div>
             )}
-            <ProductActionButtons productTitle={product.title} />
+            <ProductActionButtons 
+              productTitle={product.title} 
+              productId={product.id} 
+              supplierId={product.supplier_id} 
+            />
           </div>
         </div>
         {/* Supplier Trust Card */}
@@ -77,7 +82,12 @@ export default async function ProductPage({ params }: { params: { slug: string }
         <div className="divide-y divide-gray-100">
           <ProductAttributes specifications={product.specifications} />
           <ProductDescription description={product.description} />
-          <SupplierProfile supplierDetails={product.supplier_details} />
+          <SupplierProfile 
+            supplierDetails={product.supplier_details} 
+            productId={product.id}
+            productTitle={product.title}
+            supplierId={product.supplier_id}
+          />
         </div>
       </div>
 

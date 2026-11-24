@@ -9,6 +9,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 export interface Product {
   id?: string;
+  supplier_id?: string;
   image: string;
   title: string;
   price: string;
@@ -17,6 +18,7 @@ export interface Product {
   keywords?: string[];
   supplier?: string;
   supplier_details?: {
+    id?: string;
     name: string;
     location: string;
     logo_url: string;
@@ -52,6 +54,7 @@ export interface SupplierData {
   exportCountries: string[];
   mainProducts: string;
   description: string;
+  email?: string;
 }
 
 // ── Mock Supplier Data ──
@@ -127,12 +130,13 @@ export async function getProducts(category?: string | null, searchQuery?: string
   
   const { data, error } = await query;
   if (error || !data) {
-    console.error("Error fetching products:", error);
+    if (error) console.error("Error fetching products:", error.message || error);
     return [];
   }
   
   return data.map((p: any) => ({
     id: p.id,
+    supplier_id: p.supplier_id,
     title: p.title,
     price: p.price ? `$${p.price} ${p.unit ? `/ ${p.unit}` : ''}` : 'Contact for price',
     category: p.category,
@@ -140,6 +144,7 @@ export async function getProducts(category?: string | null, searchQuery?: string
     image: p.image_url || "/products/product1.jpg",
     supplier: p.suppliers?.company_name || 'Verified Supplier',
     supplier_details: p.suppliers ? {
+      id: p.supplier_id,
       name: p.suppliers.company_name || 'Verified Supplier',
       location: p.suppliers.location || 'Unknown',
       logo_url: p.suppliers.logo_url || null,
@@ -166,6 +171,7 @@ export async function getProductBySlug(slug: string): Promise<Product | undefine
   
   return {
     id: data.id,
+    supplier_id: data.supplier_id,
     title: data.title,
     price: data.price ? `$${data.price} ${data.unit ? `/ ${data.unit}` : ''}` : 'Contact for price',
     category: data.category,
@@ -173,6 +179,7 @@ export async function getProductBySlug(slug: string): Promise<Product | undefine
     image: data.image_url || "/products/product1.jpg",
     supplier: data.suppliers?.company_name || 'Verified Supplier',
     supplier_details: data.suppliers ? {
+      id: data.supplier_id,
       name: data.suppliers.company_name || 'Verified Supplier',
       location: data.suppliers.location || 'Unknown',
       logo_url: data.suppliers.logo_url || null,

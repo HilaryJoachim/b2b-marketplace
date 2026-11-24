@@ -112,7 +112,11 @@ const SupplierNavbar = () => {
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
           >
             <div className="w-5 h-5 rounded-full border border-white flex items-center justify-center overflow-hidden bg-white text-[#002d1b] font-bold text-[8px]">
-              {supplierUser?.name?.slice(0, 2).toUpperCase() ?? "SP"}
+              {supplierUser?.logoUrl ? (
+                <img src={supplierUser.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+              ) : (
+                supplierUser?.name?.slice(0, 2).toUpperCase() ?? "SP"
+              )}
             </div>
             <span className="text-[10px] flex items-center gap-0.5 max-w-[80px] truncate">
               Hi {supplierUser?.name?.split(" ")[0] ?? "Supplier"} <ChevronDown className="w-3 h-3 shrink-0" />

@@ -3,24 +3,29 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useInquiries } from "@/context/InquiryContext";
+import { supabase } from "@/utils/supabase/client";
 
 interface ContactSellerModalProps {
   isOpen: boolean;
   onClose: () => void;
   productTitle: string;
+  productId?: string;
+  supplierId?: string;
 }
 
 export default function ContactSellerModal({
   isOpen,
   onClose,
   productTitle,
+  productId,
+  supplierId,
 }: ContactSellerModalProps) {
   const { user } = useAuth();
   const { addInquiry } = useInquiries();
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [phone, setPhone] = useState(user?.phone || "");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -28,7 +33,21 @@ export default function ContactSellerModal({
 
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Pre-fill message when modal opens or product changes
+  // Sync user info and prefill form
+  useEffect(() => {
+    if (user) {
+      if (user.name) setName(user.name);
+      if (user.email) setEmail(user.email);
+      if (user.phone) setPhone(user.phone);
+    } else if (typeof window !== "undefined") {
+      const savedEmail = localStorage.getItem("kifaru_buyer_email");
+      const savedName = localStorage.getItem("kifaru_buyer_name");
+      if (savedName && !name) setName(savedName);
+      if (savedEmail && !email) setEmail(savedEmail);
+    }
+  }, [user, isOpen]);
+
+  // Pre-fill message and user info when modal opens or product changes
   useEffect(() => {
     if (isOpen) {
       setMessage(
@@ -80,30 +99,92 @@ export default function ContactSellerModal({
 
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      // Resolve supplierId if not passed directly
+      let effectiveSupplierId = supplierId;
+      if (!effectiveSupplierId && productId) {
+        const { data: prodData } = await supabase
+          .from('products')
+          .select('supplier_id')
+          .eq('id', productId)
+          .single();
+        if (prodData?.supplier_id) {
+          effectiveSupplierId = prodData.supplier_id;
+        }
+      }
 
-    // Save inquiry to context + localStorage
-    addInquiry({
-      type: "message",
-      buyerId: user?.id || "guest",
-      buyerName: name,
-      buyerEmail: email,
-      phone: phone || undefined,
-      productName: productTitle,
-      supplierName: "KifaruTrade Industrial Solutions Ltd.",
-      message,
-    });
+      // If still no supplierId, fallback to the registered supplier
+      if (!effectiveSupplierId) {
+        const { data: supData } = await supabase
+          .from('suppliers')
+          .select('id')
+          .limit(1)
+          .single();
+        if (supData?.id) {
+          effectiveSupplierId = supData.id;
+        }
+      }
 
-    setIsSubmitting(false);
-    setShowSuccess(true);
+      const initialMessage = {
+        id: `m_${Date.now()}`,
+        type: 'product_inquiry',
+        sender: 'buyer',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: message.trim(),
+        product: {
+          id: productId || null,
+          title: productTitle
+        }
+      };
 
-    // Auto-close after showing success
-    setTimeout(() => {
-      setShowSuccess(false);
-      resetForm();
-      onClose();
-    }, 2500);
+      // Insert inquiry into Supabase `leads` table so it shows on seller portal!
+      const { error: leadError } = await supabase.from('leads').insert({
+        supplier_id: effectiveSupplierId || null,
+        buyer_name: name.trim(),
+        buyer_email: email.trim(),
+        buyer_phone: phone.trim() || null,
+        buyer_location: user?.country || 'Online',
+        message: JSON.stringify([initialMessage]),
+        is_product_inquiry: true,
+        product_id: productId || null,
+        unread_count: 1
+      });
+
+      if (leadError) {
+        console.error('Failed to save lead to database:', leadError);
+      }
+
+      // Save buyer email to localStorage so the buyer sees their messages even if browsing as guest
+      if (email.trim() && typeof window !== 'undefined') {
+        localStorage.setItem('kifaru_buyer_email', email.trim());
+        localStorage.setItem('kifaru_buyer_name', name.trim());
+      }
+
+      // Save inquiry to context + localStorage for buyer history
+      addInquiry({
+        type: "message",
+        buyerId: user?.id || "guest",
+        buyerName: name,
+        buyerEmail: email,
+        phone: phone || undefined,
+        productName: productTitle,
+        supplierName: "Verified Supplier",
+        message,
+      });
+
+      setShowSuccess(true);
+
+      // Auto-close after showing success
+      setTimeout(() => {
+        setShowSuccess(false);
+        resetForm();
+        onClose();
+      }, 2000);
+    } catch (err) {
+      console.error('Error submitting contact form:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetForm = () => {

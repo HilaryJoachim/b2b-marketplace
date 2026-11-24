@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { 
   Search, 
   MoreVertical, 
@@ -13,14 +13,26 @@ import {
   Mail,
   Send,
   Package,
-  Info
+  Info,
+  FileText,
+  Download
 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { useSupplierAuth } from '@/context/SupplierAuthContext';
 import { supabase } from '@/utils/supabase/client';
 
 export default function AllLeadsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading messages...</div>}>
+      <AllLeadsContent />
+    </Suspense>
+  );
+}
+
+function AllLeadsContent() {
   const [activeTab, setActiveTab] = useState('All');
-  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | number | null>(null);
+  const selectedLeadIdRef = useRef<string | number | null>(null);
   
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,68 +42,198 @@ export default function AllLeadsPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { supplierUser } = useSupplierAuth();
+  const searchParams = useSearchParams();
+  const queryLeadId = searchParams.get('leadId');
 
-  // Fetch leads from Supabase
+  // Keep ref synchronized with state
   useEffect(() => {
-    if (!supplierUser) return;
-    
-    if (supplierUser.id === 'sup_demo_001') {
-      fetch('/api/messages')
-        .then(res => res.json())
-        .then(data => {
-          setLeads(data);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error('Failed to fetch messages:', err);
-          setLoading(false);
-        });
-      return;
+    selectedLeadIdRef.current = selectedLeadId;
+  }, [selectedLeadId]);
+
+  // Mark lead as read both in state and in Supabase
+  const markLeadAsRead = async (leadId: string | number) => {
+    if (!leadId) return;
+
+    // Immediately clear in local state
+    setLeads(prev => prev.map(l => String(l.id) === String(leadId) ? { ...l, unreadCount: 0 } : l));
+
+    // Persist to Supabase so it stays read
+    if (supplierUser?.id !== 'sup_demo_001') {
+      try {
+        await supabase
+          .from('leads')
+          .update({ unread_count: 0 })
+          .eq('id', leadId);
+      } catch (err) {
+        console.error('Failed to mark lead as read:', err);
+      }
     }
+  };
 
-    supabase.from('leads').select('*').eq('supplier_id', supplierUser.id).order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (data) {
-          const mappedLeads = data.map((lead: any) => ({
-            id: lead.id,
-            name: lead.buyer_name || 'Unknown Buyer',
-            location: 'Online',
-            email: lead.buyer_email,
-            phone: lead.buyer_phone,
-            initials: (lead.buyer_name || 'U').substring(0, 2).toUpperCase(),
-            avatarColor: 'bg-emerald-100 text-emerald-700',
-            unreadCount: 1,
-            date: new Date(lead.created_at).toLocaleDateString(),
-            snippet: lead.message || 'New Inquiry',
-            messages: [
-              {
-                id: lead.id,
-                type: lead.product_id ? 'product_inquiry' : 'text',
-                sender: 'buyer',
-                timestamp: new Date(lead.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                content: lead.message,
-                product: lead.product_id ? { title: "Product Inquiry (ID: " + lead.product_id + ")", category: "General", specs: "N/A", targetPrice: "N/A", qty: "1" } : null,
-              }
-            ]
-          }));
-          setLeads(mappedLeads);
+  // When selectedLeadId is set, mark it as read immediately
+  useEffect(() => {
+    if (selectedLeadId) {
+      markLeadAsRead(selectedLeadId);
+    }
+  }, [selectedLeadId]);
+
+  // Helper to parse lead messages
+  const parseMessages = (lead: any) => {
+    let parsed: any[] = [];
+    if (lead.message) {
+      try {
+        const j = JSON.parse(lead.message);
+        if (Array.isArray(j)) {
+          parsed = j;
         }
-        setLoading(false);
-      });
-  }, [supplierUser]);
+      } catch (_) {}
+    }
+    if (parsed.length === 0 && lead.message) {
+      parsed = [
+        {
+          id: `m_${lead.id}`,
+          type: lead.is_product_inquiry ? 'product_inquiry' : 'text',
+          sender: 'buyer',
+          timestamp: new Date(lead.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content: lead.message,
+          product: lead.products ? {
+            id: lead.products.id,
+            title: lead.products.title,
+            category: lead.products.category,
+            targetPrice: lead.products.price ? `$${lead.products.price}` : 'Inquiry',
+            qty: '1 Unit'
+          } : (lead.product_id ? {
+            title: `Product #${lead.product_id}`,
+            category: 'General',
+            targetPrice: 'Contact for price',
+            qty: '1 Unit'
+          } : null)
+        }
+      ];
+    }
+    return parsed;
+  };
 
-  // Scroll to bottom when selecting a lead or when messages change
+  // Fetch leads function
+  const fetchLeads = async () => {
+    if (!supplierUser) return;
+
+    try {
+      // Check for real leads in Supabase
+      let query = supabase
+        .from('leads')
+        .select('*, products(id, title, category, price, image_url)')
+        .order('created_at', { ascending: false });
+
+      if (supplierUser.id !== 'sup_demo_001') {
+        // Match this supplier's ID or unassigned leads
+        query = query.or(`supplier_id.eq.${supplierUser.id},supplier_id.is.null`);
+      }
+
+      const { data, error } = await query;
+
+      if (data && data.length > 0) {
+        const mappedLeads = data.map((lead: any) => {
+          const msgs = parseMessages(lead);
+          const initials = (lead.buyer_name || 'Buyer').substring(0, 2).toUpperCase();
+          const avatarColors = [
+            'bg-emerald-100 text-emerald-700',
+            'bg-blue-100 text-blue-700',
+            'bg-teal-100 text-teal-700',
+            'bg-orange-100 text-orange-700',
+            'bg-purple-100 text-purple-700'
+          ];
+          const colorIndex = Math.abs(lead.id.charCodeAt(0) || 0) % avatarColors.length;
+
+          const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+          const isSelected = String(selectedLeadIdRef.current) === String(lead.id);
+
+          // Lead is only unread for seller if:
+          // 1. It is NOT currently selected/open
+          // 2. Database unread_count > 0
+          // 3. The last message was NOT sent by the seller
+          const isUnreadForSeller = !isSelected && (lead.unread_count > 0) && (!lastMsg || lastMsg.sender !== 'seller');
+          const unreadCount = isUnreadForSeller ? (lead.unread_count || 1) : 0;
+
+          return {
+            id: lead.id,
+            name: lead.buyer_name || 'Prospective Buyer',
+            location: lead.buyer_location || 'Online',
+            email: lead.buyer_email || 'Not provided',
+            phone: lead.buyer_phone || 'Not provided',
+            initials,
+            avatarColor: avatarColors[colorIndex],
+            unreadCount,
+            date: new Date(lead.created_at).toLocaleDateString(),
+            snippet: msgs[msgs.length - 1]?.content || 'New inquiry received',
+            messages: msgs
+          };
+        });
+
+        setLeads(mappedLeads);
+
+        // Auto-select query lead or first lead if nothing selected
+        if (queryLeadId) {
+          setSelectedLeadId(queryLeadId);
+          markLeadAsRead(queryLeadId);
+        } else if (!selectedLeadId && mappedLeads.length > 0) {
+          setSelectedLeadId(mappedLeads[0].id);
+          markLeadAsRead(mappedLeads[0].id);
+        } else if (selectedLeadIdRef.current) {
+          // If the currently open lead has unread_count > 0 in DB, mark it read in Supabase
+          const currentLeadInDb = data.find((l: any) => String(l.id) === String(selectedLeadIdRef.current));
+          if (currentLeadInDb && currentLeadInDb.unread_count > 0) {
+            markLeadAsRead(currentLeadInDb.id);
+          }
+        }
+      } else if (supplierUser.id === 'sup_demo_001') {
+        // Fallback for demo account
+        const res = await fetch('/api/messages');
+        const demoData = await res.json();
+        setLeads(demoData);
+        if (!selectedLeadId && demoData.length > 0) {
+          setSelectedLeadId(demoData[0].id);
+        }
+      } else {
+        setLeads([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch leads:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLeads();
+
+    // Subscribe to live Realtime updates on leads table
+    const channel = supabase
+      .channel('supplier_leads_live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => {
+        fetchLeads();
+      })
+      .subscribe();
+
+    // Poll every 3 seconds as resilient backup
+    const interval = setInterval(fetchLeads, 3000);
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
+  }, [supplierUser?.id, queryLeadId]);
+
+  // Scroll to bottom when messages update
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [selectedLeadId, leads]);
 
-  const selectedLead = leads.find(l => l.id === selectedLeadId);
+  const selectedLead = leads.find(l => String(l.id) === String(selectedLeadId));
 
   const filteredLeads = leads.filter(lead => {
     if (activeTab === 'Unread') return lead.unreadCount > 0;
-    // For Favourites, we could filter by a favourite flag if we had one
     return true; 
   });
 
@@ -100,28 +242,62 @@ export default function AllLeadsPage() {
     if (!messageInput.trim() || !selectedLeadId || sending) return;
 
     setSending(true);
-    
-    // Simulating sending since we don't have a messages table yet for replies
-    setTimeout(() => {
-      setLeads(prev => prev.map(lead => {
-        if (lead.id === selectedLeadId) {
-          return {
-            ...lead,
-            unreadCount: 0,
-            messages: [...lead.messages, {
-              id: Date.now(),
-              type: 'text',
-              sender: 'supplier',
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              content: messageInput
-            }]
-          };
+    const content = messageInput.trim();
+    setMessageInput('');
+
+    const newMsg = {
+      id: `m_${Date.now()}`,
+      type: 'text',
+      sender: 'seller',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      content
+    };
+
+    const currentLead = leads.find(l => String(l.id) === String(selectedLeadId));
+    const updatedMessages = [...(currentLead?.messages || []), newMsg];
+
+    // Optimistically update UI
+    setLeads(prev => prev.map(lead => {
+      if (String(lead.id) === String(selectedLeadId)) {
+        return {
+          ...lead,
+          unreadCount: 0,
+          messages: updatedMessages
+        };
+      }
+      return lead;
+    }));
+
+    try {
+      if (supplierUser?.id === 'sup_demo_001') {
+        await fetch('/api/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leadId: selectedLeadId,
+            message: content,
+            senderType: 'seller'
+          })
+        });
+      } else {
+        // Save conversation thread into Supabase `leads` table
+        const { error } = await supabase
+          .from('leads')
+          .update({
+            message: JSON.stringify(updatedMessages),
+            unread_count: 0
+          })
+          .eq('id', selectedLeadId);
+
+        if (error) {
+          console.error('Failed to save message in Supabase:', error);
         }
-        return lead;
-      }));
-      setMessageInput('');
+      }
+    } catch (err) {
+      console.error('Send error:', err);
+    } finally {
       setSending(false);
-    }, 500);
+    }
   };
 
   return (
@@ -133,10 +309,10 @@ export default function AllLeadsPage() {
         {/* Header & Search */}
         <div className="p-4 border-b border-gray-100">
           <div className="flex justify-between items-center mb-4">
-            <h1 className="text-xl font-bold text-[#002d1b]">Messages</h1>
-            <button className="p-2 hover:bg-gray-100 rounded-full text-gray-600 transition-colors">
-              <MoreVertical className="w-5 h-5" />
-            </button>
+            <h1 className="text-xl font-bold text-[#002d1b]">Messages & Inquiries</h1>
+            <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100">
+              {leads.length} Active {leads.length === 1 ? 'Lead' : 'Leads'}
+            </span>
           </div>
           
           <div className="relative mb-4">
@@ -145,14 +321,14 @@ export default function AllLeadsPage() {
             </div>
             <input
               type="text"
-              placeholder="Search chats"
+              placeholder="Search conversations..."
               className="block w-full pl-10 pr-3 py-2.5 border border-transparent bg-gray-100 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:bg-white focus:border-[#f36a1b] focus:ring-1 focus:ring-[#f36a1b] transition-colors"
             />
           </div>
 
           {/* Filters */}
           <div className="flex gap-2">
-            {['All', 'Unread', 'Favourites'].map((tab) => (
+            {['All', 'Unread'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -171,9 +347,13 @@ export default function AllLeadsPage() {
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="p-8 text-center text-gray-400 text-sm">Loading chats...</div>
+            <div className="p-8 text-center text-gray-400 text-sm">Loading conversations...</div>
           ) : filteredLeads.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 text-sm">No chats found.</div>
+            <div className="p-12 text-center text-gray-400 text-sm">
+              <MessageSquareText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="font-semibold text-gray-700">No inquiries yet</p>
+              <p className="text-xs text-gray-400 mt-1">Inquiries from buyers will appear here in real time.</p>
+            </div>
           ) : (
             filteredLeads.map((lead) => {
               const lastMessage = lead.messages && lead.messages.length > 0 
@@ -181,15 +361,21 @@ export default function AllLeadsPage() {
                 : null;
                 
               const snippet = lastMessage 
-                ? (lastMessage.type === 'product_inquiry' ? `Inquiry: ${lastMessage.product?.title}` : lastMessage.content) 
+                ? (lastMessage.content || `Inquiry: ${lastMessage.product?.title || 'Product'}`)
                 : lead.snippet;
+
+              const isSelected = String(selectedLeadId) === String(lead.id);
+              const hasUnread = !isSelected && lead.unreadCount > 0;
 
               return (
                 <div 
                   key={lead.id}
-                  onClick={() => setSelectedLeadId(lead.id)}
+                  onClick={() => {
+                    setSelectedLeadId(lead.id);
+                    markLeadAsRead(lead.id);
+                  }}
                   className={`p-4 border-b border-gray-50 cursor-pointer transition-colors flex gap-3 hover:bg-gray-50 ${
-                    selectedLeadId === lead.id ? 'bg-gray-50' : 'bg-white'
+                    isSelected ? 'bg-orange-50/50 border-l-4 border-l-[#f36a1b]' : 'bg-white'
                   }`}
                 >
                   {/* Avatar */}
@@ -197,32 +383,28 @@ export default function AllLeadsPage() {
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${lead.avatarColor}`}>
                       {lead.initials}
                     </div>
-                    {lead.isOnline && (
-                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-                    )}
                   </div>
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start mb-0.5">
                       <h3 className="font-bold text-gray-900 truncate text-sm">{lead.name}</h3>
-                      <span className={`text-xs font-semibold shrink-0 ml-2 ${lead.unreadCount > 0 ? 'text-emerald-600' : 'text-gray-500'}`}>
+                      <span className={`text-xs font-semibold shrink-0 ml-2 ${hasUnread ? 'text-[#f36a1b] font-bold' : 'text-gray-400'}`}>
                         {lead.date}
                       </span>
                     </div>
                     
                     <div className="flex items-center text-xs text-gray-500 mb-1">
-                      <MapPin className="w-3 h-3 mr-1 shrink-0" />
+                      <MapPin className="w-3 h-3 mr-1 shrink-0 text-gray-400" />
                       <span className="truncate">{lead.location}</span>
                     </div>
                     
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-gray-600 truncate mr-2 flex items-center">
-                        {lead.isCall && <PhoneMissed className="w-3.5 h-3.5 text-red-500 mr-1 shrink-0" />}
                         {snippet}
                       </p>
-                      {lead.unreadCount > 0 && (
-                        <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 shadow-sm">
+                      {hasUnread && (
+                        <div className="w-5 h-5 bg-[#f36a1b] rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 shadow-sm">
                           {lead.unreadCount}
                         </div>
                       )}
@@ -249,10 +431,10 @@ export default function AllLeadsPage() {
 
         {selectedLead ? (
           // Active Chat View
-          <div className="relative z-10 flex flex-col h-full w-full max-w-4xl mx-auto border-l border-r border-gray-100 bg-white/50 backdrop-blur-sm shadow-xl">
+          <div className="relative z-10 flex flex-col h-full w-full max-w-4xl mx-auto border-l border-r border-gray-100 bg-white/70 backdrop-blur-sm shadow-xl">
             
             {/* Chat Header & Buyer Details */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0 flex items-center justify-between z-20 shadow-sm">
+            <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0 flex items-center justify-between z-20 shadow-xs">
               <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${selectedLead.avatarColor}`}>
                   {selectedLead.initials}
@@ -260,24 +442,23 @@ export default function AllLeadsPage() {
                 <div>
                   <h2 className="font-bold text-[#002d1b] text-lg leading-tight flex items-center gap-2">
                     {selectedLead.name}
-                    {selectedLead.isOnline && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
                   </h2>
                   <p className="text-sm text-gray-500 flex items-center mt-0.5">
-                    <MapPin className="w-3 h-3 mr-1" /> {selectedLead.location}
+                    <MapPin className="w-3.5 h-3.5 mr-1 text-gray-400" /> {selectedLead.location}
                   </p>
                 </div>
               </div>
               
               {/* Buyer Contact Info Panel */}
-              <div className="hidden lg:flex items-center gap-4 border-l border-gray-200 pl-4 ml-4">
-                <div className="flex flex-col gap-2 text-sm text-gray-600">
+              <div className="hidden lg:flex items-center gap-3 border-l border-gray-200 pl-4 ml-4">
+                <div className="flex flex-col gap-1.5 text-xs text-gray-600">
                   <div className="flex items-center bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                    <Phone className="w-4 h-4 mr-2 text-[#f36a1b]" />
-                    <span className="font-medium">{selectedLead.phone || '+91 98765 43210'}</span>
+                    <Phone className="w-3.5 h-3.5 mr-2 text-[#f36a1b]" />
+                    <span className="font-medium text-gray-800">{selectedLead.phone}</span>
                   </div>
                   <div className="flex items-center bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                    <Mail className="w-4 h-4 mr-2 text-[#f36a1b]" />
-                    <span className="font-medium">{selectedLead.email || 'buyer@example.com'}</span>
+                    <Mail className="w-3.5 h-3.5 mr-2 text-[#f36a1b]" />
+                    <span className="font-medium text-gray-800">{selectedLead.email}</span>
                   </div>
                 </div>
               </div>
@@ -285,11 +466,11 @@ export default function AllLeadsPage() {
 
             {/* Chat History */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Top info message about off-platform */}
+              {/* Direct Reach Alert */}
               <div className="flex justify-center mb-6">
-                <div className="bg-blue-50 text-blue-700 border border-blue-100 text-xs px-4 py-2 rounded-full flex items-center shadow-sm">
-                  <Info className="w-4 h-4 mr-2" />
-                  Buyer's contact details are available. You may reach out to them directly.
+                <div className="bg-emerald-50 text-emerald-800 border border-emerald-100 text-xs px-4 py-2 rounded-full flex items-center shadow-xs">
+                  <Info className="w-4 h-4 mr-2 text-emerald-600" />
+                  Buyer verified. You can exchange messages here or contact them via phone/email directly.
                 </div>
               </div>
 
@@ -299,36 +480,86 @@ export default function AllLeadsPage() {
                 return (
                   <div key={msg.id} className={`flex flex-col ${isBuyer ? 'items-start' : 'items-end'}`}>
                     
-                    {/* Timestamp */}
+                    {/* Sender & Timestamp */}
                     <span className="text-[10px] text-gray-400 font-medium mb-1 px-1">
-                      {msg.timestamp}
+                      {isBuyer ? selectedLead.name : 'You (Seller)'} &bull; {msg.timestamp}
                     </span>
                     
-                    {/* Render Product Inquiry */}
+                    {/* Render Product Inquiry Card if attached */}
                     {msg.type === 'product_inquiry' && msg.product && (
-                      <div className="max-w-[85%] sm:max-w-md bg-white border border-[#f36a1b]/30 shadow-sm rounded-2xl rounded-tl-sm p-4 mb-2">
-                        <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
-                          <Package className="w-5 h-5 text-[#f36a1b]" />
+                      <div className="max-w-[85%] sm:max-w-md bg-white border border-orange-200 shadow-sm rounded-2xl rounded-tl-sm p-4 mb-2">
+                        <div className="flex items-center gap-2 mb-2 border-b border-gray-100 pb-2">
+                          <Package className="w-4 h-4 text-[#f36a1b]" />
                           <span className="text-xs font-bold text-[#f36a1b] uppercase tracking-wide">Product Inquiry</span>
                         </div>
                         <h4 className="font-bold text-[#002d1b] text-base leading-tight mb-2">
                           {msg.product.title}
                         </h4>
-                        <div className="space-y-1 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                          <p><span className="font-semibold text-gray-800">Category:</span> {msg.product.category}</p>
-                          <p><span className="font-semibold text-gray-800">Specs:</span> {msg.product.specs}</p>
-                          <p><span className="font-semibold text-gray-800">Target Price:</span> {msg.product.targetPrice}</p>
-                          <p><span className="font-semibold text-gray-800">Quantity:</span> {msg.product.qty}</p>
+                        <div className="space-y-1 text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                          {msg.product.category && <p><span className="font-semibold text-gray-800">Category:</span> {msg.product.category}</p>}
+                          {msg.product.qty && <p><span className="font-semibold text-gray-800">Quantity:</span> {msg.product.qty}</p>}
+                          {msg.product.targetPrice && <p><span className="font-semibold text-gray-800">Price Target:</span> {msg.product.targetPrice}</p>}
                         </div>
                       </div>
                     )}
 
-                    {/* Render Text Message */}
-                    {msg.type === 'text' && (
+                    {/* Render Formal Quotation Card if present */}
+                    {(msg.type === 'quotation' || msg.quotation) && (
+                      <div className="max-w-[85%] sm:max-w-md bg-gradient-to-br from-emerald-50 to-white border border-emerald-300 shadow-sm rounded-2xl p-4 mb-2 text-left">
+                        <div className="flex items-center justify-between gap-2 mb-2 border-b border-emerald-100 pb-2">
+                          <div className="flex items-center gap-1.5 text-emerald-800">
+                            <FileText className="w-4 h-4 text-emerald-600" />
+                            <span className="text-xs font-bold uppercase tracking-wide">Official Quotation Sent</span>
+                          </div>
+                          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                            Verified Proposal
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-2xs">
+                            <span className="text-[11px] text-gray-500 font-medium block">Price Quoted</span>
+                            <span className="text-sm font-extrabold text-emerald-700">{msg.quotation?.price || 'Negotiable'}</span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-2xs">
+                            <span className="text-[11px] text-gray-500 font-medium block">Estimated Delivery</span>
+                            <span className="text-sm font-bold text-gray-900">{msg.quotation?.deliveryTime || 'Standard'}</span>
+                          </div>
+                        </div>
+
+                        {msg.quotation?.notes && (
+                          <div className="text-xs text-gray-700 bg-white p-2.5 rounded-lg border border-emerald-100 mb-3 whitespace-pre-wrap">
+                            {msg.quotation.notes}
+                          </div>
+                        )}
+
+                        {msg.quotation?.pdfUrl && (
+                          <a
+                            href={msg.quotation.pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={msg.quotation.pdfName || 'Quotation_Proposal.pdf'}
+                            className="w-full flex items-center justify-between p-2.5 bg-[#002d1b] hover:bg-[#084C41] text-white rounded-xl text-xs font-semibold transition-all shadow-xs group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="px-1.5 py-0.5 bg-red-500 text-white font-bold text-[10px] rounded">PDF</span>
+                              <span className="truncate">{msg.quotation.pdfName || 'Formal_Proposal.pdf'}</span>
+                              {msg.quotation.pdfSize && (
+                                <span className="text-white/60 text-[10px]">({msg.quotation.pdfSize})</span>
+                              )}
+                            </div>
+                            <Download className="w-3.5 h-3.5 shrink-0 group-hover:scale-110 transition-transform ml-2" />
+                          </a>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Message Bubble */}
+                    {msg.content && msg.type !== 'quotation' && (
                       <div 
-                        className={`max-w-[85%] sm:max-w-md px-5 py-3 shadow-sm ${
+                        className={`max-w-[85%] sm:max-w-md px-5 py-3 shadow-xs ${
                           isBuyer 
-                            ? 'bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm' 
+                            ? 'bg-white border border-gray-200/80 text-gray-900 rounded-2xl rounded-tl-sm' 
                             : 'bg-[#002d1b] text-white rounded-2xl rounded-tr-sm'
                         }`}
                       >
@@ -349,20 +580,21 @@ export default function AllLeadsPage() {
                   type="text"
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
-                  placeholder="Type a message or quote..."
-                  className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b] transition-all shadow-inner"
+                  placeholder="Type your response to the buyer..."
+                  className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b] transition-all"
                   disabled={sending}
                 />
                 <button 
                   type="submit" 
                   disabled={!messageInput.trim() || sending}
-                  className="bg-[#f36a1b] text-white p-3 rounded-xl hover:bg-[#d95a12] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center justify-center shrink-0"
+                  className="bg-[#f36a1b] hover:bg-[#d95a12] text-white px-5 py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center justify-center shrink-0 font-semibold gap-1.5 cursor-pointer"
                 >
-                  <Send className="w-5 h-5" />
+                  <Send className="w-4 h-4" />
+                  <span className="hidden sm:inline">Send</span>
                 </button>
               </form>
               <div className="mt-2 text-center">
-                <p className="text-[10px] text-gray-400">Press Enter to send. Messages are secure and monitored.</p>
+                <p className="text-[10px] text-gray-400">Replies are sent directly to the buyer's portal.</p>
               </div>
             </div>
 
@@ -370,35 +602,16 @@ export default function AllLeadsPage() {
         ) : (
           // Empty Welcome State
           <div className="relative z-10 flex flex-col items-center justify-center text-center p-8 h-full max-w-lg mx-auto">
-            
-            <h2 className="text-3xl font-bold text-[#002d1b] mb-2">
-              Welcome, <span className="text-[#f36a1b]">{supplierUser?.companyName || supplierUser?.name || 'Your Company'}</span>
+            <h2 className="text-2xl font-bold text-[#002d1b] mb-2">
+              Welcome, <span className="text-[#f36a1b]">{supplierUser?.companyName || supplierUser?.name || 'Seller'}</span>
             </h2>
-            <p className="text-gray-600 font-medium mb-12">
-              Connect With Buyers Seamlessly On Kifaru Trade
+            <p className="text-gray-500 text-sm mb-8">
+              Select a conversation from the left to view buyer requirements and respond.
             </p>
 
-            {/* Custom Illustration Composition */}
-            <div className="relative w-64 h-64 flex items-center justify-center mb-8">
-              {/* Central Circle */}
-              <div className="absolute w-48 h-48 bg-gradient-to-br from-emerald-100 to-teal-50 rounded-full shadow-inner border border-white"></div>
-              <div className="absolute w-56 h-56 rounded-full border border-emerald-100 animate-[spin_60s_linear_infinite]"></div>
-              <div className="absolute w-64 h-64 rounded-full border border-gray-100 border-dashed animate-[spin_40s_linear_infinite_reverse]"></div>
-              
-              {/* Central Icon */}
-              <div className="relative z-10 bg-white p-6 rounded-3xl shadow-xl border border-gray-50 transform hover:scale-105 transition-transform duration-300">
-                <Users className="w-16 h-16 text-[#002d1b]" />
-                <div className="absolute -bottom-3 -right-3 bg-[#f36a1b] p-2 rounded-xl shadow-lg">
-                  <Globe2 className="w-6 h-6 text-white" />
-                </div>
-              </div>
-
-              {/* Floating avatar dots */}
-              <div className="absolute top-4 right-10 w-8 h-8 bg-blue-100 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-blue-600 font-bold text-xs">V</div>
-              <div className="absolute bottom-12 left-6 w-10 h-10 bg-purple-100 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-purple-600 font-bold text-sm">F</div>
-              <div className="absolute top-20 left-4 w-6 h-6 bg-pink-100 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-pink-600 font-bold text-[10px]">S</div>
+            <div className="w-16 h-16 bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center mx-auto mb-4 text-[#002d1b]">
+              <Users className="w-8 h-8" />
             </div>
-            
           </div>
         )}
 

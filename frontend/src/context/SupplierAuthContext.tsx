@@ -16,6 +16,9 @@ export interface SupplierUser {
   name: string;
   email: string;
   companyName?: string;
+  phone?: string;
+  location?: string;
+  logoUrl?: string;
   role: "supplier";
 }
 
@@ -27,6 +30,8 @@ interface SupplierAuthContextType {
     password: string
   ) => Promise<{ success: boolean; error?: string }>;
   supplierLogout: () => void;
+  updateSupplierUser: (updates: Partial<SupplierUser>) => void;
+  registerSupplier: (user: SupplierUser, password?: string) => Promise<void> | void;
   // Login modal controls
   isSupplierLoginOpen: boolean;
   openSupplierLogin: () => void;
@@ -48,28 +53,44 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
 
     const fetchProfile = async (userId: string, email: string) => {
-      const { data, error } = await supabase
-        .from('suppliers')
-        .select('*')
-        .eq('id', userId)
-        .single();
-        
-      if (!mounted) return;
+      try {
+        const { data, error } = await supabase
+          .from('suppliers')
+          .select('*')
+          .eq('id', userId)
+          .single();
+          
+        if (!mounted) return;
 
-      if (data) {
-        setSupplierUser({
-          id: data.id,
-          name: data.name || email,
-          email: data.email,
-          companyName: data.company_name,
-          role: "supplier",
-        });
-      } else {
-        // If they are not in the suppliers table, they are not a supplier.
-        setSupplierUser(null);
+        if (data && !error) {
+          setSupplierUser({
+            id: data.id,
+            name: data.name || email,
+            email: data.email,
+            companyName: data.company_name,
+            phone: data.phone || undefined,
+            location: data.location || undefined,
+            logoUrl: data.logo_url || undefined,
+            role: "supplier",
+          });
+        } else {
+          // If they are not in the suppliers table, they are not a supplier.
+          setSupplierUser(null);
+        }
+      } catch (err) {
+        console.error("Failed to fetch supplier profile:", err);
+        if (mounted) setSupplierUser(null);
+      } finally {
+        if (mounted) setIsSupplierLoading(false);
       }
-      setIsSupplierLoading(false);
     };
+
+    // Safety timeout: max 3.5s wait to avoid getting stuck on a loading spinner indefinitely
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        setIsSupplierLoading(false);
+      }
+    }, 3500);
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -77,6 +98,12 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         fetchProfile(session.user.id, session.user.email || '');
       } else {
+        setSupplierUser(null);
+        setIsSupplierLoading(false);
+      }
+    }).catch((err) => {
+      console.error("Session get error:", err);
+      if (mounted) {
         setSupplierUser(null);
         setIsSupplierLoading(false);
       }
@@ -97,6 +124,7 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []);
@@ -138,6 +166,31 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
     setSupplierUser(null);
   }, []);
 
+  const updateSupplierUser = useCallback((updates: Partial<SupplierUser>) => {
+    setSupplierUser(prev => prev ? { ...prev, ...updates } : null);
+  }, []);
+
+  const registerSupplier = useCallback(async (user: SupplierUser, password?: string) => {
+    if (user.email && password) {
+      try {
+        await supabase.auth.signUp({
+          email: user.email,
+          password: password,
+          options: {
+            data: {
+              company_name: user.companyName,
+              name: user.name,
+              role: 'supplier',
+            }
+          }
+        });
+      } catch (err) {
+        console.error("Failed to register supplier:", err);
+      }
+    }
+    setSupplierUser(user);
+  }, []);
+
   // ── Modal Controls ──
   const openSupplierLogin = useCallback(() => {
     setIsSupplierLoginOpen(true);
@@ -154,6 +207,8 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
         isSupplierLoading,
         supplierLogin,
         supplierLogout,
+        updateSupplierUser,
+        registerSupplier,
         isSupplierLoginOpen,
         openSupplierLogin,
         closeSupplierLogin,

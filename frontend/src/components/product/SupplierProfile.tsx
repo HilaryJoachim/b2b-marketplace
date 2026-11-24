@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import { getDefaultSupplier } from "@/lib/data";
 import VerifiedBadge from "@/components/supplier/VerifiedBadge";
 import SupplierStats from "@/components/supplier/SupplierStats";
+import ContactSellerModal from "@/components/ContactSellerModal";
 
 interface SupplierProfileProps {
   supplierDetails?: {
@@ -9,10 +13,19 @@ interface SupplierProfileProps {
     logo_url: string | null;
     created_at: string;
   };
+  productId?: string;
+  productTitle?: string;
+  supplierId?: string;
 }
 
-export default function SupplierProfile({ supplierDetails }: SupplierProfileProps) {
+export default function SupplierProfile({ 
+  supplierDetails, 
+  productId, 
+  productTitle, 
+  supplierId 
+}: SupplierProfileProps) {
   const defaultSupplier = getDefaultSupplier();
+  const [isContactOpen, setIsContactOpen] = useState(false);
   
   const supplier = {
     ...defaultSupplier,
@@ -118,21 +131,35 @@ export default function SupplierProfile({ supplierDetails }: SupplierProfileProp
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <button className="flex-1 bg-[#F36A1B] hover:bg-[#d95a12] text-white font-semibold text-sm px-6 py-3 rounded-lg transition-colors duration-200 cursor-pointer flex items-center justify-center gap-2">
+            <button 
+              onClick={() => setIsContactOpen(true)}
+              className="flex-1 bg-[#F36A1B] hover:bg-[#d95a12] text-white font-semibold text-sm px-6 py-3 rounded-lg transition-colors duration-200 cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
               Contact Supplier
             </button>
-            <button className="flex-1 border-2 border-[#084C41] text-[#084C41] hover:bg-[#084C41] hover:text-white font-semibold text-sm px-6 py-3 rounded-lg transition-colors duration-200 cursor-pointer flex items-center justify-center gap-2">
+            <a 
+              href={`mailto:${defaultSupplier.email || 'support@kifarutrade.com'}?subject=Inquiry%20regarding%20${encodeURIComponent(productTitle || supplier.name)}`}
+              className="flex-1 border-2 border-[#084C41] text-[#084C41] hover:bg-[#084C41] hover:text-white font-semibold text-sm px-6 py-3 rounded-lg transition-colors duration-200 cursor-pointer flex items-center justify-center gap-2 text-center"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
-              View Company Page
-            </button>
+              Direct Email
+            </a>
           </div>
         </div>
       </div>
+
+      <ContactSellerModal
+        isOpen={isContactOpen}
+        onClose={() => setIsContactOpen(false)}
+        productTitle={productTitle || "Product Inquiry"}
+        productId={productId}
+        supplierId={supplierId}
+      />
     </section>
   );
 }

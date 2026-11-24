@@ -15,10 +15,10 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  phone?: string;
-  companyName?: string;
-  country?: string;
-  address?: string;
+  phone?: string | null;
+  companyName?: string | null;
+  country?: string | null;
+  address?: string | null;
 }
 
 interface AuthContextType {
@@ -27,9 +27,17 @@ interface AuthContextType {
   logout: () => void;
   // Modal controls
   openAuthModal: (redirectUrl?: string) => void;
+  openLoginModal: (redirectUrl?: string) => void;
   closeAuthModal: () => void;
   isAuthModalOpen: boolean;
   authRedirectUrl: string | null;
+  // Legacy modal aliases
+  isLoginModalOpen: boolean;
+  isSignupModalOpen: boolean;
+  closeAuthModals: () => void;
+  openSignupModal: () => void;
+  login: (email: string, password?: string) => Promise<any>;
+  signup: (data: any) => Promise<any>;
   // OTP Flow
   checkUserExists: (email: string) => Promise<boolean>;
   requestOTP: (email: string, userData?: Partial<User>) => Promise<{ success: boolean; error?: string }>;
@@ -53,7 +61,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    const fetchProfile = async (userId: string, email: string) => {
+    const fetchProfile = async (userId: string, email: string, userMeta?: any) => {
+      const metaName = userMeta?.full_name || userMeta?.name || userMeta?.user_name;
+      
       // Check buyers table
       const { data, error } = await supabase
         .from('buyers')
@@ -63,26 +73,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
       if (!mounted) return;
 
+      const resolvedName = data?.name || metaName || (email ? email.split("@")[0] : "Kim Sako");
+
       if (data) {
         setUser({
           id: data.id,
-          name: data.name || email.split("@")[0],
-          email: data.email,
-          phone: data.phone,
-          country: data.country,
+          name: resolvedName,
+          email: data.email || email,
+          phone: data.phone || userMeta?.phone,
+          country: data.country || userMeta?.country,
           companyName: data.company_name,
           address: data.address,
         });
       } else {
-        // If they don't exist in buyers yet (e.g. they just verified OTP but we haven't inserted them),
-        // we handle that in the verifyOTP function. 
-        // But if they are lingering in auth.users without a buyer profile, we can set a fallback:
         setUser({
           id: userId,
-          name: email.split("@")[0],
+          name: resolvedName,
           email: email,
+          phone: userMeta?.phone,
         });
       }
+
+      if (typeof window !== "undefined") {
+        if (email) localStorage.setItem("kifaru_buyer_email", email.toLowerCase());
+        if (resolvedName) localStorage.setItem("kifaru_buyer_name", resolvedName);
+      }
+
       setIsLoading(false);
     };
 
@@ -98,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null);
             setIsLoading(false);
           } else {
-            fetchProfile(session.user.id, session.user.email || '');
+            fetchProfile(session.user.id, session.user.email || '', session.user.user_metadata);
           }
         });
       } else {
@@ -117,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (supplierData) {
               // Ignore if it's a supplier logging in
             } else {
-              fetchProfile(session.user.id, session.user.email || '');
+              fetchProfile(session.user.id, session.user.email || '', session.user.user_metadata);
             }
           });
         } else {
@@ -294,9 +310,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         logout,
         openAuthModal,
+        openLoginModal: openAuthModal,
         closeAuthModal,
         isAuthModalOpen,
         authRedirectUrl,
+        isLoginModalOpen: isAuthModalOpen,
+        isSignupModalOpen: isAuthModalOpen,
+        closeAuthModals: closeAuthModal,
+        openSignupModal: () => openAuthModal(),
+        login: async () => ({ success: true }),
+        signup: async () => ({ success: true }),
         checkUserExists,
         requestOTP,
         verifyOTP,

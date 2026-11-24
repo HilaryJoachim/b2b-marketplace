@@ -13,6 +13,7 @@ export default function BuyerDashboardPage() {
   const { user, isLoading, openLoginModal } = useAuth();
 
   const [products, setProducts] = useState<any[]>([]);
+  const [inquiryCount, setInquiryCount] = useState(0);
 
   // Redirect unauthenticated users
   useEffect(() => {
@@ -22,7 +23,7 @@ export default function BuyerDashboardPage() {
     }
   }, [isLoading, user, openLoginModal, router]);
 
-  // Fetch real featured products
+  // Fetch real featured products and user inquiries
   useEffect(() => {
     const fetchProducts = async () => {
       // Fetch the latest 4 products, including the supplier's company name
@@ -35,8 +36,24 @@ export default function BuyerDashboardPage() {
         setProducts(data);
       }
     };
+
+    const fetchInquiries = async () => {
+      const email = user?.email || (typeof window !== 'undefined' ? localStorage.getItem('kifaru_buyer_email') : null);
+      if (!email) return;
+
+      const { data } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('buyer_email', email);
+
+      if (data) {
+        setInquiryCount(data.length);
+      }
+    };
+
     fetchProducts();
-  }, []);
+    fetchInquiries();
+  }, [user?.email]);
 
   if (isLoading) {
     return (
@@ -76,8 +93,8 @@ export default function BuyerDashboardPage() {
                 <MessageSquareText className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-500 mb-1">Unread Messages</p>
-                <p className="text-3xl font-bold text-gray-900">0</p>
+                <p className="text-sm font-medium text-gray-500 mb-1">Active Conversations</p>
+                <p className="text-3xl font-bold text-gray-900">{inquiryCount}</p>
               </div>
             </div>
             <div className="text-sm font-medium text-blue-600 flex items-center gap-1 group-hover:gap-2 transition-all">
@@ -96,8 +113,8 @@ export default function BuyerDashboardPage() {
                 <FileText className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-500 mb-1">Pending Quotes</p>
-                <p className="text-3xl font-bold text-gray-900">0</p>
+                <p className="text-sm font-medium text-gray-500 mb-1">Active Inquiries & Quotes</p>
+                <p className="text-3xl font-bold text-gray-900">{inquiryCount}</p>
               </div>
             </div>
             <div className="text-sm font-medium text-emerald-600 flex items-center gap-1 group-hover:gap-2 transition-all">

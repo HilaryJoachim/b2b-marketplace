@@ -7,28 +7,24 @@ import GetQuoteModal from "@/components/GetQuoteModal";
 
 interface ProductActionButtonsProps {
   productTitle: string;
+  productId?: string;
+  supplierId?: string;
 }
 
 export default function ProductActionButtons({
   productTitle,
+  productId,
+  supplierId,
 }: ProductActionButtonsProps) {
   const { user, openLoginModal } = useAuth();
   const [isContactOpen, setIsContactOpen] = useState(false);
   const [isQuoteOpen, setIsQuoteOpen] = useState(false);
 
   const handleContactClick = () => {
-    if (!user) {
-      openLoginModal();
-      return;
-    }
     setIsContactOpen(true);
   };
 
   const handleQuoteClick = () => {
-    if (!user) {
-      openLoginModal();
-      return;
-    }
     setIsQuoteOpen(true);
   };
 
@@ -53,12 +49,16 @@ export default function ProductActionButtons({
         isOpen={isContactOpen}
         onClose={() => setIsContactOpen(false)}
         productTitle={productTitle}
+        productId={productId}
+        supplierId={supplierId}
       />
 
       <GetQuoteModal
         isOpen={isQuoteOpen}
         onClose={() => setIsQuoteOpen(false)}
         productTitle={productTitle}
+        productId={productId}
+        supplierId={supplierId}
       />
     </>
   );

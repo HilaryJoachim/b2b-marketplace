@@ -79,7 +79,9 @@ function VerifyEmailContent() {
     }
 
     if (verifiedUser) {
-      registerSupplier(verifiedUser, password);
+      if (registerSupplier) {
+        registerSupplier(verifiedUser, password);
+      }
       setStatus('success');
       setTimeout(() => {
          router.push('/supplier/dashboard');

@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building2, User, Mail, Phone, MapPin, CheckCircle, 
-  ShieldCheck, Map, CreditCard, Landmark, Plus, Edit2, Info, Save, X, Loader2
+  ShieldCheck, Map, CreditCard, Landmark, Plus, Edit2, Info, Save, X, Loader2,
+  Camera, Trash2, Upload
 } from 'lucide-react';
 import { useSupplierAuth } from '@/context/SupplierAuthContext';
 import { supabase } from '@/utils/supabase/client';
@@ -34,12 +35,19 @@ const COUNTRY_OPTIONS = [
 ];
 
 export default function SupplierProfilePage() {
-  const { supplierUser } = useSupplierAuth();
+  const { supplierUser, updateSupplierUser } = useSupplierAuth();
   const [selectedCountry, setSelectedCountry] = useState('india');
 
   // Edit modes
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isEditingBusiness, setIsEditingBusiness] = useState(false);
+
+  // Logo state
+  const [logoUrl, setLogoUrl] = useState<string>('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasLoadedRef = useRef(false);
 
   // Profile Form State
   const [profileForm, setProfileForm] = useState({
@@ -59,33 +67,65 @@ export default function SupplierProfilePage() {
   });
 
   useEffect(() => {
-    if (supplierUser) {
-      const isDemo = supplierUser.id === 'sup_demo_001';
+    if (!supplierUser) return;
+
+    // Only load once per supplier to prevent overwriting user input while editing
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+
+    const isDemo = supplierUser.id === 'sup_demo_001';
+
+    if (isDemo) {
       setProfileForm({
-        companyName: supplierUser.companyName || supplierUser.name || '',
-        contactName: isDemo ? 'Export Sales Director' : supplierUser.name || '',
-        address: isDemo ? '92, Sector-Ecotech, Greater Noida, UP, India' : '',
-        phone: isDemo ? '+91 92893 77638' : '',
-        email: supplierUser.email || '',
+        companyName: supplierUser.companyName || supplierUser.name || 'Global Trade Solutions Ltd.',
+        contactName: 'Export Sales Director',
+        address: '92, Sector-Ecotech, Greater Noida, UP, India',
+        phone: '+91 92893 77638',
+        email: supplierUser.email || 'contact@globaltrade.com',
       });
-      if (!isDemo) {
-        // Fetch full details if needed
-        supabase.from('suppliers').select('name, company_name, phone, location').eq('id', supplierUser.id).single()
-          .then(({ data }) => {
-            if (data) {
-              setProfileForm(prev => ({
-                ...prev,
-                contactName: data.name || prev.contactName,
-                companyName: data.company_name || prev.companyName,
-                phone: data.phone || prev.phone,
-                address: data.location || prev.address,
-              }));
-            }
-          });
-        setBusinessForm({});
-      }
+      return;
     }
-  }, [supplierUser]);
+
+    // Initialize from supplierUser context
+    setProfileForm({
+      companyName: supplierUser.companyName || supplierUser.name || '',
+      contactName: supplierUser.name || '',
+      address: supplierUser.location || '',
+      phone: supplierUser.phone || '',
+      email: supplierUser.email || '',
+    });
+    if (supplierUser.logoUrl) {
+      setLogoUrl(supplierUser.logoUrl);
+    }
+
+    // Fetch full details from database once
+    const fetchSupplierDetails = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('suppliers')
+          .select('name, company_name, phone, location, logo_url')
+          .eq('id', supplierUser.id)
+          .single();
+
+        if (data && !error) {
+          setProfileForm(prev => ({
+            ...prev,
+            contactName: data.name || prev.contactName,
+            companyName: data.company_name || prev.companyName,
+            phone: data.phone || prev.phone,
+            address: data.location || prev.address,
+          }));
+          if (data.logo_url) {
+            setLogoUrl(data.logo_url);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch supplier details:', err);
+      }
+    };
+
+    fetchSupplierDetails();
+  }, [supplierUser?.id]);
 
   const handleProfileChange = (key: string, value: string) => {
     setProfileForm(prev => ({ ...prev, [key]: value }));
@@ -95,24 +135,132 @@ export default function SupplierProfilePage() {
     setBusinessForm(prev => ({ ...prev, [key]: value }));
   };
 
+  // Logo Upload Handler
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setLogoError('Please select a valid image file (PNG, JPG, WEBP, or SVG).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setLogoError('Image size must be less than 5MB.');
+      return;
+    }
+
+    setLogoError('');
+    setIsUploadingLogo(true);
+
+    // Instant local preview
+    const localPreview = URL.createObjectURL(file);
+    setLogoUrl(localPreview);
+
+    try {
+      if (supplierUser && supplierUser.id !== 'sup_demo_001') {
+        const fileExt = file.name.split('.').pop() || 'png';
+        const fileName = `logo-${Date.now()}.${fileExt}`;
+        const filePath = `${supplierUser.id}/logo/${fileName}`;
+
+        // 1. Upload to Supabase storage 'supplier-media'
+        const { error: uploadError } = await supabase.storage
+          .from('supplier-media')
+          .upload(filePath, file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        // 2. Retrieve public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('supplier-media')
+          .getPublicUrl(filePath);
+
+        // 3. Update database record
+        const { error: dbError } = await supabase
+          .from('suppliers')
+          .update({ logo_url: publicUrl })
+          .eq('id', supplierUser.id);
+
+        if (dbError) throw dbError;
+
+        setLogoUrl(publicUrl);
+        updateSupplierUser?.({ logoUrl: publicUrl });
+      } else {
+        // Demo mode update
+        updateSupplierUser?.({ logoUrl: localPreview });
+      }
+    } catch (err: any) {
+      console.error('Logo upload error:', err);
+      setLogoError(err.message || 'Failed to upload logo. Please try again.');
+    } finally {
+      setIsUploadingLogo(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleRemoveLogo = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isUploadingLogo) return;
+
+    setLogoUrl('');
+    setLogoError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    if (supplierUser && supplierUser.id !== 'sup_demo_001') {
+      try {
+        await supabase
+          .from('suppliers')
+          .update({ logo_url: null })
+          .eq('id', supplierUser.id);
+
+        updateSupplierUser?.({ logoUrl: undefined });
+      } catch (err) {
+        console.error('Failed to remove logo:', err);
+      }
+    } else {
+      updateSupplierUser?.({ logoUrl: undefined });
+    }
+  };
+
   const [isSaving, setIsSaving] = useState(false);
 
   const handleProfileSave = async () => {
-    if (!supplierUser || supplierUser.id === 'sup_demo_001') {
+    if (!supplierUser) return;
+
+    if (supplierUser.id === 'sup_demo_001') {
       setIsEditingProfile(false);
       return;
     }
     
     setIsSaving(true);
-    await supabase.from('suppliers').update({
-      name: profileForm.contactName,
-      company_name: profileForm.companyName,
-      phone: profileForm.phone,
-      location: profileForm.address,
-    }).eq('id', supplierUser.id);
-    
-    setIsSaving(false);
-    setIsEditingProfile(false);
+    try {
+      const { error } = await supabase.from('suppliers').update({
+        name: profileForm.contactName,
+        company_name: profileForm.companyName,
+        phone: profileForm.phone,
+        location: profileForm.address,
+        logo_url: logoUrl || null,
+      }).eq('id', supplierUser.id);
+      
+      if (error) {
+        console.error("Error saving profile:", error);
+        alert("Failed to save profile: " + error.message);
+      } else {
+        updateSupplierUser({
+          name: profileForm.contactName,
+          companyName: profileForm.companyName,
+          phone: profileForm.phone,
+          location: profileForm.address,
+          logoUrl: logoUrl || undefined,
+        });
+        setIsEditingProfile(false);
+      }
+    } catch (err: any) {
+      console.error("Save error:", err);
+      alert("Error saving profile: " + (err.message || "Failed to save"));
+    } finally {
+      setIsSaving(false);
+    }
   };
   
   const handleBusinessSave = () => setIsEditingBusiness(false);
@@ -328,10 +476,68 @@ export default function SupplierProfilePage() {
               </div>
 
               <div className="flex gap-4 items-center mb-6">
-                <div className="w-20 h-20 bg-gray-50 border-2 border-gray-100 rounded-2xl flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
-                  <Building2 className="w-8 h-8 text-gray-300" />
+                {/* Logo Upload Widget */}
+                <div className="flex flex-col items-center">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleLogoUpload}
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                    className="hidden"
+                  />
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Click to upload/change company logo"
+                    className="relative w-20 h-20 bg-gray-50 hover:bg-gray-100 border-2 border-gray-200 hover:border-[#f36a1b] rounded-2xl flex items-center justify-center shrink-0 shadow-sm overflow-hidden cursor-pointer group transition-all"
+                  >
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt={profileForm.companyName || "Company Logo"}
+                        className="w-full h-full object-contain p-1.5"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-2 text-center">
+                        <Building2 className="w-8 h-8 text-gray-300 group-hover:text-gray-400 group-hover:scale-105 transition-all" />
+                      </div>
+                    )}
+
+                    {/* Hover Overlay */}
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white backdrop-blur-[0.5px]">
+                      <Camera className="w-5 h-5 mb-0.5 text-white" />
+                      <span className="text-[10px] font-semibold text-white">
+                        {logoUrl ? "Change" : "Upload"}
+                      </span>
+                    </div>
+
+                    {/* Uploading Spinner Overlay */}
+                    {isUploadingLogo && (
+                      <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] flex flex-col items-center justify-center z-10">
+                        <Loader2 className="w-6 h-6 text-[#f36a1b] animate-spin" />
+                        <span className="text-[9px] text-gray-600 font-bold mt-1">Uploading</span>
+                      </div>
+                    )}
+
+                    {/* Camera Badge in bottom right */}
+                    <div className="absolute bottom-1 right-1 w-5 h-5 bg-[#f36a1b] text-white rounded-full flex items-center justify-center shadow-md border border-white pointer-events-none">
+                      <Camera className="w-2.5 h-2.5" />
+                    </div>
+                  </div>
+
+                  {/* Remove logo button */}
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      className="text-[11px] text-gray-400 hover:text-red-500 flex items-center gap-1 transition-colors mt-1.5 cursor-pointer"
+                      title="Remove logo"
+                    >
+                      <Trash2 className="w-3 h-3" /> Remove
+                    </button>
+                  )}
                 </div>
-                <div className="flex-1">
+
+                <div className="flex-1 min-w-0">
                   {isEditingProfile ? (
                     <>
                       <input 
@@ -351,12 +557,19 @@ export default function SupplierProfilePage() {
                     </>
                   ) : (
                     <>
-                      <h3 className="font-bold text-lg text-gray-800 leading-tight">{profileForm.companyName || 'Your Company Name'}</h3>
-                      <p className="text-sm text-gray-500 mt-1">{profileForm.contactName || 'Add Your Role'}</p>
+                      <h3 className="font-bold text-lg text-gray-800 leading-tight truncate">{profileForm.companyName || 'Your Company Name'}</h3>
+                      <p className="text-sm text-gray-500 mt-1 truncate">{profileForm.contactName || 'Add Your Role'}</p>
                     </>
                   )}
                 </div>
               </div>
+
+              {logoError && (
+                <div className="mb-4 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-1.5">
+                  <X className="w-3.5 h-3.5 shrink-0" />
+                  <span>{logoError}</span>
+                </div>
+              )}
 
               <div className="mb-6">
                 <ProfileItem 
@@ -533,7 +746,7 @@ function ProfileItem({
         <div className="mt-0.5 shrink-0">{icon}</div>
         <input
           type="text"
-          value={value}
+          value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           className="w-full px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#f36a1b]/50 focus:border-[#f36a1b]"
           placeholder={`Enter ${fieldKey}`}

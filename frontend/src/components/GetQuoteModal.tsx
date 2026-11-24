@@ -3,23 +3,31 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useInquiries } from "@/context/InquiryContext";
+import { supabase } from "@/utils/supabase/client";
 
 interface GetQuoteModalProps {
   isOpen: boolean;
   onClose: () => void;
   productTitle: string;
+  productId?: string;
+  supplierId?: string;
 }
 
 export default function GetQuoteModal({
   isOpen,
   onClose,
   productTitle,
+  productId,
+  supplierId,
 }: GetQuoteModalProps) {
   const { user } = useAuth();
   const { addRFQ } = useInquiries();
 
+  const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [phone, setPhone] = useState(user?.phone || "");
   const [quantity, setQuantity] = useState("");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState(user?.country || "");
   const [requiredDate, setRequiredDate] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,7 +36,22 @@ export default function GetQuoteModal({
 
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Pre-fill message when modal opens or product changes
+  // Sync user info and prefill form
+  useEffect(() => {
+    if (user) {
+      if (user.name) setName(user.name);
+      if (user.email) setEmail(user.email);
+      if (user.phone) setPhone(user.phone);
+      if (user.country) setCountry(user.country);
+    } else if (typeof window !== "undefined") {
+      const savedEmail = localStorage.getItem("kifaru_buyer_email");
+      const savedName = localStorage.getItem("kifaru_buyer_name");
+      if (savedName && !name) setName(savedName);
+      if (savedEmail && !email) setEmail(savedEmail);
+    }
+  }, [user, isOpen]);
+
+  // Pre-fill message and user details when modal opens or product changes
   useEffect(() => {
     if (isOpen) {
       setMessage(
@@ -63,6 +86,12 @@ export default function GetQuoteModal({
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
+    if (!name.trim()) newErrors.name = "Full name is required";
+    if (!email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = "Please enter a valid email address";
+    }
     if (!quantity.trim() || Number(quantity) <= 0) {
       newErrors.quantity = "Please enter a valid quantity (must be greater than 0)";
     }
@@ -79,37 +108,107 @@ export default function GetQuoteModal({
 
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      // Resolve supplierId if not passed directly
+      let effectiveSupplierId = supplierId;
+      if (!effectiveSupplierId && productId) {
+        const { data: prodData } = await supabase
+          .from('products')
+          .select('supplier_id')
+          .eq('id', productId)
+          .single();
+        if (prodData?.supplier_id) {
+          effectiveSupplierId = prodData.supplier_id;
+        }
+      }
 
-    // Save RFQ to context + localStorage
-    addRFQ({
-      type: "rfq",
-      buyerId: user?.id || "guest",
-      buyerName: user?.name || "Guest User",
-      buyerEmail: user?.email || "",
-      productName: productTitle,
-      supplierName: "KifaruTrade Industrial Solutions Ltd.",
-      quantity: Number(quantity),
-      country,
-      requiredDate: requiredDate || undefined,
-      message: message || undefined,
-    });
+      // If still no supplierId, fallback to the registered supplier
+      if (!effectiveSupplierId) {
+        const { data: supData } = await supabase
+          .from('suppliers')
+          .select('id')
+          .limit(1)
+          .single();
+        if (supData?.id) {
+          effectiveSupplierId = supData.id;
+        }
+      }
 
-    setIsSubmitting(false);
-    setShowSuccess(true);
+      const quoteText = message?.trim() || `Requesting a formal quotation for ${quantity} units to ${country}. Expected delivery date: ${requiredDate || 'Flexible'}.`;
 
-    // Auto-close after showing success
-    setTimeout(() => {
-      setShowSuccess(false);
-      resetForm();
-      onClose();
-    }, 2500);
+      const initialMessage = {
+        id: `m_${Date.now()}`,
+        type: 'product_inquiry',
+        sender: 'buyer',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: quoteText,
+        product: {
+          id: productId || null,
+          title: productTitle,
+          qty: `${quantity} Units`,
+          targetPrice: 'Quote Requested',
+          specs: `Destination: ${country}`
+        }
+      };
+
+      // Save buyer email to localStorage so the buyer sees their messages even if browsing as guest
+      if (email.trim() && typeof window !== 'undefined') {
+        localStorage.setItem('kifaru_buyer_email', email.trim());
+        localStorage.setItem('kifaru_buyer_name', name.trim());
+      }
+
+      // Insert RFQ into Supabase `leads` table so it shows on seller portal!
+      const { error: leadError } = await supabase.from('leads').insert({
+        supplier_id: effectiveSupplierId || null,
+        buyer_name: name.trim(),
+        buyer_email: email.trim(),
+        buyer_phone: phone.trim() || null,
+        buyer_location: country.trim(),
+        message: JSON.stringify([initialMessage]),
+        is_product_inquiry: true,
+        product_id: productId || null,
+        unread_count: 1
+      });
+
+      if (leadError) {
+        console.error('Failed to save quote lead to database:', leadError);
+      }
+
+      // Save RFQ to context + localStorage
+      addRFQ({
+        type: "rfq",
+        buyerId: user?.id || "guest",
+        buyerName: name.trim(),
+        buyerEmail: email.trim(),
+        productName: productTitle,
+        supplierName: "Verified Supplier",
+        quantity: Number(quantity),
+        country,
+        requiredDate: requiredDate || undefined,
+        message: message || undefined,
+      });
+
+      setShowSuccess(true);
+
+      // Auto-close after showing success
+      setTimeout(() => {
+        setShowSuccess(false);
+        resetForm();
+        onClose();
+      }, 2000);
+    } catch (err) {
+      console.error('Error submitting quote:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetForm = () => {
+    setName(user?.name || "");
+    setEmail(user?.email || "");
+    setPhone(user?.phone || "");
     setQuantity("");
-    setCountry("");
+    setCountry(user?.country || "");
     setRequiredDate("");
     setMessage("");
     setErrors({});
@@ -196,6 +295,68 @@ export default function GetQuoteModal({
         {/* Form */}
         {!showSuccess && (
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            {/* Buyer Contact Details */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Full Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
+                  }}
+                  placeholder="e.g. John Mwangi"
+                  className={`w-full px-4 py-2.5 rounded-lg border text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary ${
+                    errors.name
+                      ? "border-red-400 focus:ring-red-400/40 focus:border-red-400"
+                      : "border-gray-200 dark:border-gray-700"
+                  }`}
+                />
+                {errors.name && (
+                  <p className="mt-1 text-xs text-red-500">{errors.name}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Email Address <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (errors.email) setErrors((prev) => ({ ...prev, email: "" }));
+                  }}
+                  placeholder="e.g. john@company.co.ke"
+                  className={`w-full px-4 py-2.5 rounded-lg border text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary ${
+                    errors.email
+                      ? "border-red-400 focus:ring-red-400/40 focus:border-red-400"
+                      : "border-gray-200 dark:border-gray-700"
+                  }`}
+                />
+                {errors.email && (
+                  <p className="mt-1 text-xs text-red-500">{errors.email}</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Phone Number <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. +254 712 345 678"
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+              />
+            </div>
+
             {/* Quantity & Country — Side by Side */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Quantity */}
