@@ -1,4 +1,12 @@
 {
+  "name": "b2b-marketplace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend run start"
+  },
   "dependencies": {
     "lucide-react": "^0.515.0"
   }
