@@ -30,16 +30,16 @@ export default function ProductActionButtons({
 
   return (
     <>
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <button
           onClick={handleContactClick}
-          className="flex-1 bg-primary text-white font-semibold px-8 py-4 rounded-lg hover:bg-secondary transition-colors duration-300 shadow-sm cursor-pointer"
+          className="flex-1 bg-primary text-white font-semibold px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg hover:bg-secondary transition-colors duration-300 shadow-sm cursor-pointer text-center"
         >
           Contact Seller
         </button>
         <button
           onClick={handleQuoteClick}
-          className="flex-1 border-2 border-primary text-primary font-semibold px-8 py-4 rounded-lg hover:bg-primary hover:text-white transition-colors duration-300 cursor-pointer"
+          className="flex-1 border-2 border-primary text-primary font-semibold px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg hover:bg-primary hover:text-white transition-colors duration-300 cursor-pointer text-center"
         >
           Get Quote
         </button>

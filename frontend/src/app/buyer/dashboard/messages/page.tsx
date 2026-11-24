@@ -14,7 +14,8 @@ import {
   Mail,
   Info,
   FileText,
-  Download
+  Download,
+  ArrowLeft
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -115,10 +116,10 @@ function BuyerMessagesContent() {
 
         setChats(mappedChats);
 
-        // Auto select
+        // Auto select on desktop or queryChatId
         if (queryChatId) {
           setSelectedChatId(queryChatId);
-        } else if (!selectedChatId && mappedChats.length > 0) {
+        } else if (!selectedChatId && mappedChats.length > 0 && typeof window !== 'undefined' && window.innerWidth >= 768) {
           setSelectedChatId(mappedChats[0].id);
         }
       } else {
@@ -213,10 +214,10 @@ function BuyerMessagesContent() {
   };
 
   return (
-    <div className="h-full flex bg-white overflow-hidden rounded-2xl border border-gray-200/80 shadow-xs" style={{ height: 'calc(100vh - 120px)', margin: '16px' }}>
+    <div className="h-[calc(100vh-140px)] md:h-[calc(100vh-120px)] m-2 md:m-4 flex bg-white overflow-hidden rounded-2xl border border-gray-200/80 shadow-xs">
       
       {/* Left Pane: Chat List */}
-      <div className="w-full md:w-[350px] lg:w-[380px] flex-shrink-0 border-r border-gray-200 flex flex-col bg-white h-full relative z-10">
+      <div className={`${selectedChatId ? 'hidden md:flex' : 'flex'} w-full md:w-[350px] lg:w-[380px] flex-shrink-0 border-r border-gray-200 flex-col bg-white h-full relative z-10`}>
         
         {/* Header & Search */}
         <div className="p-4 border-b border-gray-100">
@@ -319,16 +320,24 @@ function BuyerMessagesContent() {
       </div>
 
       {/* Right Pane: Chat / Empty State */}
-      <div className="hidden md:flex flex-1 flex-col relative bg-[#f5f7fa] overflow-hidden">
+      <div className={`${selectedChatId ? 'flex' : 'hidden md:flex'} flex-1 flex-col relative bg-[#f5f7fa] overflow-hidden`}>
         
         {selectedChat ? (
           // Active Chat View
           <div className="relative z-10 flex flex-col h-full w-full max-w-4xl mx-auto border-l border-r border-gray-200/70 bg-white/70 backdrop-blur-sm shadow-xs">
             
             {/* Chat Header & Supplier Details */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0 flex items-center justify-between z-20 shadow-xs">
-              <div className="flex items-center gap-4">
-                <div className="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-base bg-orange-100 text-[#f36a1b] border border-orange-200/60">
+            <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 shrink-0 flex items-center justify-between z-20 shadow-xs">
+              <div className="flex items-center gap-2 sm:gap-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedChatId(null)}
+                  className="md:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg shrink-0 cursor-pointer"
+                  aria-label="Back to conversations list"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center font-bold text-base bg-orange-100 text-[#f36a1b] border border-orange-200/60 shrink-0">
                   <Store className="w-5 h-5" />
                 </div>
                 <div>

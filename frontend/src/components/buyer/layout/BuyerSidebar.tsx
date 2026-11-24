@@ -23,7 +23,7 @@ export default function BuyerSidebar() {
   const { user } = useAuth();
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col sticky top-[73px]" style={{ height: 'calc(100vh - 73px)' }}>
+    <div className="w-64 bg-white border-r border-gray-200 flex-shrink-0 hidden md:flex flex-col sticky top-[73px]" style={{ height: 'calc(100vh - 73px)' }}>
 
       <div className="p-4 flex-1 overflow-y-auto space-y-2">
         {NAV_ITEMS.map((item) => {

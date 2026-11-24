@@ -1,6 +1,7 @@
 import React from "react";
 import BuyerSidebar from "@/components/buyer/layout/BuyerSidebar";
 import BuyerNavbar from "@/components/buyer/layout/BuyerNavbar";
+import BuyerBottomNav from "@/components/buyer/layout/BuyerBottomNav";
 
 export default function BuyerDashboardLayout({
   children,
@@ -12,10 +13,11 @@ export default function BuyerDashboardLayout({
       <BuyerNavbar />
       <div className="flex flex-1 relative z-0">
         <BuyerSidebar />
-        <main className="flex-1 w-full relative">
+        <main className="flex-1 w-full relative pb-16 md:pb-0">
           {children}
         </main>
       </div>
+      <BuyerBottomNav />
     </div>
   );
 }

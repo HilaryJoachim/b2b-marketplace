@@ -15,7 +15,8 @@ import {
   Package,
   Info,
   FileText,
-  Download
+  Download,
+  ArrowLeft
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useSupplierAuth } from '@/context/SupplierAuthContext';
@@ -172,11 +173,11 @@ function AllLeadsContent() {
 
         setLeads(mappedLeads);
 
-        // Auto-select query lead or first lead if nothing selected
+        // Auto-select query lead or first lead if on desktop
         if (queryLeadId) {
           setSelectedLeadId(queryLeadId);
           markLeadAsRead(queryLeadId);
-        } else if (!selectedLeadId && mappedLeads.length > 0) {
+        } else if (!selectedLeadId && mappedLeads.length > 0 && typeof window !== 'undefined' && window.innerWidth >= 768) {
           setSelectedLeadId(mappedLeads[0].id);
           markLeadAsRead(mappedLeads[0].id);
         } else if (selectedLeadIdRef.current) {
@@ -304,7 +305,7 @@ function AllLeadsContent() {
     <div className="h-[calc(100vh-60px)] flex bg-white overflow-hidden">
       
       {/* Left Pane: Lead List */}
-      <div className="w-full md:w-[380px] lg:w-[420px] flex-shrink-0 border-r border-gray-200 flex flex-col bg-white h-full relative z-10">
+      <div className={`${selectedLeadId ? 'hidden md:flex' : 'flex'} w-full md:w-[380px] lg:w-[420px] flex-shrink-0 border-r border-gray-200 flex-col bg-white h-full relative z-10`}>
         
         {/* Header & Search */}
         <div className="p-4 border-b border-gray-100">
@@ -418,7 +419,7 @@ function AllLeadsContent() {
       </div>
 
       {/* Right Pane: Chat / Empty State */}
-      <div className="hidden md:flex flex-1 flex-col relative bg-[#f5f7fa] overflow-hidden">
+      <div className={`${selectedLeadId ? 'flex' : 'hidden md:flex'} flex-1 flex-col relative bg-[#f5f7fa] overflow-hidden`}>
         
         {/* Subtle Background Pattern */}
         <div 
@@ -434,16 +435,24 @@ function AllLeadsContent() {
           <div className="relative z-10 flex flex-col h-full w-full max-w-4xl mx-auto border-l border-r border-gray-100 bg-white/70 backdrop-blur-sm shadow-xl">
             
             {/* Chat Header & Buyer Details */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0 flex items-center justify-between z-20 shadow-xs">
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${selectedLead.avatarColor}`}>
+            <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 shrink-0 flex items-center justify-between z-20 shadow-xs">
+              <div className="flex items-center gap-2 sm:gap-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLeadId(null)}
+                  className="md:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg shrink-0 cursor-pointer"
+                  aria-label="Back to leads list"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-base sm:text-lg shrink-0 ${selectedLead.avatarColor}`}>
                   {selectedLead.initials}
                 </div>
                 <div>
-                  <h2 className="font-bold text-[#002d1b] text-lg leading-tight flex items-center gap-2">
+                  <h2 className="font-bold text-[#002d1b] text-base sm:text-lg leading-tight flex items-center gap-1.5 sm:gap-2">
                     {selectedLead.name}
                   </h2>
-                  <p className="text-sm text-gray-500 flex items-center mt-0.5">
+                  <p className="text-xs sm:text-sm text-gray-500 flex items-center mt-0.5">
                     <MapPin className="w-3.5 h-3.5 mr-1 text-gray-400" /> {selectedLead.location}
                   </p>
                 </div>

@@ -21,7 +21,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const recommended = await getRecommendedProducts(product.slug, 4);
 
   return (
-    <div className="max-w-7xl mx-auto p-6 py-12">
+    <div className="max-w-7xl mx-auto p-4 sm:p-6 py-6 sm:py-12">
       {/* ─── Product Hero ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Image Section */}

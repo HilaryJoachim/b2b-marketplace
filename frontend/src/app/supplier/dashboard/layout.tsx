@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import SupplierNavbar from "@/components/supplier/layout/SupplierNavbar";
 import SupplierSidebar from "@/components/supplier/layout/SupplierSidebar";
+import SupplierBottomNav from "@/components/supplier/layout/SupplierBottomNav";
 import { useSupplierAuth } from "@/context/SupplierAuthContext";
 import { Loader2 } from "lucide-react";
 
@@ -34,10 +35,11 @@ export default function SupplierDashboardLayout({
       <SupplierNavbar />
       <div className="flex flex-1 overflow-hidden">
         <SupplierSidebar />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden pb-16 md:pb-0">
           {children}
         </main>
       </div>
+      <SupplierBottomNav />
     </div>
   );
 }

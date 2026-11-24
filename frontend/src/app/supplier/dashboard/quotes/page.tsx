@@ -429,7 +429,7 @@ function QuotesContent() {
           
           {/* RESPOND MODAL */}
           {activeModal === 'respond' && (
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between p-6 border-b border-gray-100">
                 <div>
                   <h2 className="text-xl font-bold text-[#002d1b]">Respond to Quote Request</h2>
@@ -536,7 +536,7 @@ function QuotesContent() {
                     className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b] resize-none"
                   ></textarea>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="block text-sm font-semibold text-gray-700">Total Price Estimate</label>
                     <div className="relative">
@@ -561,11 +561,11 @@ function QuotesContent() {
                     />
                   </div>
                 </div>
-                <div className="pt-4 flex items-center justify-between border-t border-gray-100">
+                <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-gray-100">
                   <p className="text-xs text-gray-500 italic">A copy of this quotation will be sent to your registered email.</p>
-                  <div className="flex gap-3">
-                    <button type="button" onClick={() => setActiveModal('none')} className="px-6 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                    <button type="submit" disabled={uploadStatus !== 'idle'} className={`px-6 py-2.5 text-sm font-semibold text-white rounded-lg transition-all flex items-center ${uploadStatus === 'success' ? 'bg-green-600' : 'bg-[#002d1b] hover:bg-[#001f12]'} disabled:opacity-80`}>
+                  <div className="flex gap-3 justify-end">
+                    <button type="button" onClick={() => setActiveModal('none')} className="px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">Cancel</button>
+                    <button type="submit" disabled={uploadStatus !== 'idle'} className={`px-5 py-2.5 text-sm font-semibold text-white rounded-lg transition-all flex items-center justify-center cursor-pointer ${uploadStatus === 'success' ? 'bg-green-600' : 'bg-[#002d1b] hover:bg-[#001f12]'} disabled:opacity-80`}>
                       {uploadStatus === 'idle' && <><Paperclip className="w-4 h-4 mr-2" /> Send Quote</>}
                       {uploadStatus === 'uploading' && 'Sending...'}
                       {uploadStatus === 'success' && <><CheckCircle2 className="w-4 h-4 mr-2" /> Sent Successfully</>}
@@ -578,7 +578,7 @@ function QuotesContent() {
 
           {/* VIEW REQUEST MODAL */}
           {activeModal === 'viewRequest' && (
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between p-6 border-b border-gray-100">
                 <div>
                   <h2 className="text-xl font-bold text-[#002d1b]">Request Details</h2>
@@ -634,7 +634,7 @@ function QuotesContent() {
 
           {/* VIEW SENT QUOTE MODAL */}
           {activeModal === 'viewQuote' && (
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between p-6 border-b border-gray-100">
                 <div>
                   <h2 className="text-xl font-bold text-[#002d1b]">Sent Quote Overview</h2>

@@ -43,7 +43,7 @@ const SupplierNavbar = () => {
   return (
     <nav className="w-full bg-[#002d1b] text-white h-[60px] flex items-center px-4 sticky top-0 z-50">
       {/* Logo */}
-      <div className="flex items-center shrink-0 mr-6">
+      <div className="flex items-center shrink-0 mr-2 sm:mr-6">
         <Link href="/supplier/dashboard" className="flex items-center gap-1 cursor-pointer">
           <img
             src="/logo.png"
@@ -59,7 +59,7 @@ const SupplierNavbar = () => {
       {/* Search Bar */}
       <form onSubmit={handleSearch} className="flex-1 max-w-3xl flex items-center h-10 bg-white rounded overflow-hidden">
         {/* Category Dropdown */}
-        <button type="button" className="flex items-center gap-1 px-3 bg-white text-gray-700 text-sm font-medium border-r border-gray-200 h-full hover:bg-gray-50 cursor-pointer">
+        <button type="button" className="hidden sm:flex items-center gap-1 px-3 bg-white text-gray-700 text-sm font-medium border-r border-gray-200 h-full hover:bg-gray-50 cursor-pointer">
           Buy Leads <ChevronDown className="w-4 h-4 text-gray-500" />
         </button>
         
@@ -68,18 +68,18 @@ const SupplierNavbar = () => {
           type="text" 
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Enter product / service to search" 
-          className="flex-1 h-full px-3 text-sm text-gray-900 outline-none"
+          placeholder="Enter product / service..." 
+          className="flex-1 h-full px-2 sm:px-3 text-xs sm:text-sm text-gray-900 outline-none min-w-0"
         />
         
         {/* Camera Icon */}
-        <button type="button" className="px-3 text-emerald-500 hover:bg-gray-50 h-full flex items-center cursor-pointer">
+        <button type="button" className="hidden sm:flex px-3 text-emerald-500 hover:bg-gray-50 h-full items-center cursor-pointer">
           <ScanLine className="w-5 h-5" />
         </button>
 
         {/* Search Button */}
-        <button type="submit" className="px-6 bg-[#f36a1b] hover:bg-[#d95a12] text-white text-sm font-medium h-full flex items-center gap-1 cursor-pointer transition-colors">
-          <Search className="w-4 h-4" /> Search
+        <button type="submit" className="px-3 sm:px-6 bg-[#f36a1b] hover:bg-[#d95a12] text-white text-xs sm:text-sm font-medium h-full flex items-center gap-1 cursor-pointer transition-colors shrink-0">
+          <Search className="w-4 h-4" /> <span className="hidden sm:inline">Search</span>
         </button>
       </form>
 
@@ -93,7 +93,7 @@ const SupplierNavbar = () => {
       </div>
 
       {/* Right Icons */}
-      <div className="flex items-center gap-5 ml-auto pl-4">
+      <div className="flex items-center gap-3 sm:gap-5 ml-auto pl-2 sm:pl-4">
         <Link href="/supplier/dashboard/all-leads" className="flex flex-col items-center gap-0.5 cursor-pointer hover:text-gray-200 relative">
           <MessageSquare className="w-5 h-5" />
           <span className="text-[10px]">All Leads</span>
