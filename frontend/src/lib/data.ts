@@ -102,7 +102,13 @@ export interface Category {
 const categories: Category[] = [
   { icon: "/icons/construction.png", label: "Construction Equipment" },
   { icon: "/icons/agriculture.png", label: "Agricultural Machinery" },
-  { icon: "/icons/mining.png", label: "Mining Tools" },
+  { icon: "/icons/mining.png", label: "Mining Equipment" },
+  { icon: "/icons/packaging.svg", label: "Packaging Machinery" },
+  { icon: "/icons/food.svg", label: "Food Processing" },
+  { icon: "/icons/manufacturing.svg", label: "Manufacturing & Molding" },
+  { icon: "/icons/metalworking.svg", label: "Metalworking & Tools" },
+  { icon: "/icons/material-handling.svg", label: "Material Handling" },
+  { icon: "/icons/power.svg", label: "Power & Generators" },
   { icon: "/icons/industrial.png", label: "Industrial Parts" },
 ];
 
@@ -121,7 +127,11 @@ export async function getProducts(category?: string | null, searchQuery?: string
   let query = supabase.from('products').select('*, suppliers(company_name, location, logo_url, created_at)').eq('status', 'Active').order('created_at', { ascending: false });
   
   if (category) {
-    query = query.eq('category', category);
+    if (category === "Mining Equipment" || category === "Mining Tools") {
+      query = query.or('category.eq.Mining Equipment,category.eq.Mining Tools');
+    } else {
+      query = query.eq('category', category);
+    }
   }
   
   if (searchQuery) {

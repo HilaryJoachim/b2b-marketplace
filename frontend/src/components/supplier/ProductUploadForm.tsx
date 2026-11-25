@@ -289,7 +289,13 @@ export default function ProductUploadForm() {
                 >
                   <option value="Construction Equipment">Construction Equipment</option>
                   <option value="Agricultural Machinery">Agricultural Machinery</option>
-                  <option value="Mining Tools">Mining Tools</option>
+                  <option value="Mining Equipment">Mining Equipment</option>
+                  <option value="Packaging Machinery">Packaging Machinery</option>
+                  <option value="Food Processing">Food Processing</option>
+                  <option value="Manufacturing & Molding">Manufacturing & Molding</option>
+                  <option value="Metalworking & Tools">Metalworking & Tools</option>
+                  <option value="Material Handling">Material Handling</option>
+                  <option value="Power & Generators">Power & Generators</option>
                   <option value="Industrial Parts">Industrial Parts</option>
                 </select>
               </div>

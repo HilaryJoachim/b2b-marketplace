@@ -549,10 +549,16 @@ export default function SupplierProductsPage() {
                           <label className="block text-sm font-semibold text-gray-700">Category</label>
                           <div className="relative">
                             <select name="category" defaultValue={selectedProduct.category} className="w-full pl-4 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b] focus:bg-white transition-all appearance-none">
-                              <option value={selectedProduct.category}>{selectedProduct.category}</option>
-                              <option>Packaging Machinery</option>
-                              <option>Mixing Equipment</option>
-                              <option>Other Machinery</option>
+                              <option value="Construction Equipment">Construction Equipment</option>
+                              <option value="Agricultural Machinery">Agricultural Machinery</option>
+                              <option value="Mining Equipment">Mining Equipment</option>
+                              <option value="Packaging Machinery">Packaging Machinery</option>
+                              <option value="Food Processing">Food Processing</option>
+                              <option value="Manufacturing & Molding">Manufacturing & Molding</option>
+                              <option value="Metalworking & Tools">Metalworking & Tools</option>
+                              <option value="Material Handling">Material Handling</option>
+                              <option value="Power & Generators">Power & Generators</option>
+                              <option value="Industrial Parts">Industrial Parts</option>
                             </select>
                             <ChevronDown className="w-4 h-4 text-gray-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                           </div>
