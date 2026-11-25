@@ -16,7 +16,12 @@ import {
   Info,
   FileText,
   Download,
-  ArrowLeft
+  ArrowLeft,
+  Paperclip,
+  Upload,
+  CheckCircle2,
+  X,
+  ChevronRight
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useSupplierAuth } from '@/context/SupplierAuthContext';
@@ -41,6 +46,18 @@ function AllLeadsContent() {
   const [messageInput, setMessageInput] = useState('');
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Quote modal state
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
+  const [quotePrice, setQuotePrice] = useState('');
+  const [quoteDeliveryTime, setQuoteDeliveryTime] = useState('');
+  const [quoteNotes, setQuoteNotes] = useState('');
+  const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
+  const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null);
+  const [fileError, setFileError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [quoteUploadStatus, setQuoteUploadStatus] = useState<'idle' | 'uploading' | 'success'>('idle');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { supplierUser } = useSupplierAuth();
   const searchParams = useSearchParams();
@@ -237,6 +254,141 @@ function AllLeadsContent() {
     if (activeTab === 'Unread') return lead.unreadCount > 0;
     return true; 
   });
+
+  const validateAndSetFile = (file?: File) => {
+    setFileError('');
+    if (!file) return;
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      setFileError('Invalid format. Only PDF files are supported.');
+      return;
+    }
+
+    const maxBytes = 500 * 1024;
+    if (file.size > maxBytes) {
+      const sizeKb = (file.size / 1024).toFixed(1);
+      setFileError(`File exceeds 500KB limit (selected: ${sizeKb} KB). Please upload a smaller PDF.`);
+      return;
+    }
+
+    setSelectedPdfFile(file);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPdfDataUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    validateAndSetFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      validateAndSetFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const openQuoteModal = (targetLead?: any) => {
+    const lead = targetLead || selectedLead;
+    if (!lead) return;
+    setFileError('');
+    setQuoteUploadStatus('idle');
+
+    // Pre-fill existing quote if one exists in this chat
+    const qMsgs = lead.messages?.filter((m: any) => m.type === 'quotation' || m.quotation);
+    if (qMsgs && qMsgs.length > 0) {
+      const latestQ = qMsgs[qMsgs.length - 1];
+      const q = latestQ.quotation || latestQ;
+      setQuotePrice(q.price ? String(q.price).replace('$', '') : '');
+      setQuoteDeliveryTime(q.deliveryTime || '');
+      setQuoteNotes(q.notes || '');
+      setPdfDataUrl(q.pdfUrl || null);
+    } else {
+      setQuotePrice('');
+      setQuoteDeliveryTime('');
+      setQuoteNotes('');
+      setSelectedPdfFile(null);
+      setPdfDataUrl(null);
+    }
+    setQuoteModalOpen(true);
+  };
+
+  const handleSendFormalQuote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLead) return;
+    setQuoteUploadStatus('uploading');
+
+    try {
+      let finalPdfUrl = pdfDataUrl;
+
+      if (selectedPdfFile && supplierUser?.id) {
+        try {
+          const filePath = `${supplierUser.id}/quotes/${Date.now()}-${selectedPdfFile.name}`;
+          const { error: upErr } = await supabase.storage.from('supplier-media').upload(filePath, selectedPdfFile);
+          if (!upErr) {
+            const { data: { publicUrl } } = supabase.storage.from('supplier-media').getPublicUrl(filePath);
+            if (publicUrl) finalPdfUrl = publicUrl;
+          }
+        } catch (_) {}
+      }
+
+      const quotationData = {
+        price: quotePrice ? (quotePrice.startsWith('$') ? quotePrice : `$${quotePrice}`) : 'Contact for price',
+        deliveryTime: quoteDeliveryTime || 'Standard delivery',
+        notes: quoteNotes || '',
+        pdfUrl: finalPdfUrl || null,
+        pdfName: selectedPdfFile?.name || (finalPdfUrl ? 'Quotation_Proposal.pdf' : null),
+        pdfSize: selectedPdfFile ? `${(selectedPdfFile.size / 1024).toFixed(1)} KB` : null,
+        createdAt: new Date().toISOString()
+      };
+
+      const quoteMsg = {
+        id: `q_${Date.now()}`,
+        type: 'quotation',
+        sender: 'seller',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: `Official Quotation Offer: ${quotationData.price} (Delivery: ${quotationData.deliveryTime})${quoteNotes ? `\n\nNotes: ${quoteNotes}` : ''}`,
+        quotation: quotationData
+      };
+
+      const updatedMsgs = [...(selectedLead.messages || []), quoteMsg];
+
+      if (supplierUser?.id !== 'sup_demo_001') {
+        await supabase
+          .from('leads')
+          .update({
+            message: JSON.stringify(updatedMsgs),
+            unread_count: 0
+          })
+          .eq('id', selectedLead.id);
+      }
+
+      setLeads(prev => prev.map(l => String(l.id) === String(selectedLead.id) ? {
+        ...l,
+        snippet: quoteMsg.content,
+        messages: updatedMsgs
+      } : l));
+
+      setQuoteUploadStatus('success');
+      setTimeout(() => {
+        setQuoteModalOpen(false);
+        setQuotePrice('');
+        setQuoteDeliveryTime('');
+        setQuoteNotes('');
+        setSelectedPdfFile(null);
+        setPdfDataUrl(null);
+      }, 1200);
+    } catch (err) {
+      console.error('Failed to send formal quote:', err);
+      setQuoteUploadStatus('idle');
+    }
+  };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -458,16 +610,28 @@ function AllLeadsContent() {
                 </div>
               </div>
               
-              {/* Buyer Contact Info Panel */}
-              <div className="hidden lg:flex items-center gap-3 border-l border-gray-200 pl-4 ml-4">
-                <div className="flex flex-col gap-1.5 text-xs text-gray-600">
-                  <div className="flex items-center bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                    <Phone className="w-3.5 h-3.5 mr-2 text-[#f36a1b]" />
-                    <span className="font-medium text-gray-800">{selectedLead.phone}</span>
-                  </div>
-                  <div className="flex items-center bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                    <Mail className="w-3.5 h-3.5 mr-2 text-[#f36a1b]" />
-                    <span className="font-medium text-gray-800">{selectedLead.email}</span>
+              {/* Actions & Buyer Contact */}
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => openQuoteModal(selectedLead)}
+                  className="px-3 py-2 bg-[#f36a1b] hover:bg-[#d95a12] text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Paperclip className="w-3.5 h-3.5" />
+                  <span>Send Quote / PDF</span>
+                </button>
+
+                {/* Buyer Contact Info Panel */}
+                <div className="hidden lg:flex items-center gap-3 border-l border-gray-200 pl-3">
+                  <div className="flex flex-col gap-1 text-xs text-gray-600">
+                    <div className="flex items-center bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100">
+                      <Phone className="w-3 h-3 mr-1.5 text-[#f36a1b]" />
+                      <span className="font-medium text-gray-800">{selectedLead.phone}</span>
+                    </div>
+                    <div className="flex items-center bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100">
+                      <Mail className="w-3 h-3 mr-1.5 text-[#f36a1b]" />
+                      <span className="font-medium text-gray-800">{selectedLead.email}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -584,7 +748,15 @@ function AllLeadsContent() {
 
             {/* Chat Input Area */}
             <div className="bg-white border-t border-gray-200 p-4 shrink-0 z-20">
-              <form onSubmit={handleSendMessage} className="flex gap-3">
+              <form onSubmit={handleSendMessage} className="flex gap-2 sm:gap-3 items-center">
+                <button
+                  type="button"
+                  onClick={() => openQuoteModal(selectedLead)}
+                  title="Attach Formal Quotation PDF (Max 500KB)"
+                  className="p-3 bg-orange-50 hover:bg-orange-100 text-[#f36a1b] border border-orange-200 rounded-xl transition-colors flex items-center justify-center shrink-0 cursor-pointer shadow-2xs group"
+                >
+                  <Paperclip className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                </button>
                 <input
                   type="text"
                   value={messageInput}
@@ -602,8 +774,15 @@ function AllLeadsContent() {
                   <span className="hidden sm:inline">Send</span>
                 </button>
               </form>
-              <div className="mt-2 text-center">
-                <p className="text-[10px] text-gray-400">Replies are sent directly to the buyer's portal.</p>
+              <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
+                <span>Replies are sent directly to the buyer's portal.</span>
+                <button 
+                  type="button" 
+                  onClick={() => openQuoteModal(selectedLead)}
+                  className="text-[#f36a1b] hover:underline font-medium flex items-center gap-1 cursor-pointer"
+                >
+                  <Paperclip className="w-3 h-3" /> Attach official PDF quote
+                </button>
               </div>
             </div>
 
@@ -625,6 +804,159 @@ function AllLeadsContent() {
         )}
 
       </div>
+
+      {/* FORMAL QUOTATION MODAL */}
+      {quoteModalOpen && selectedLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h2 className="text-xl font-bold text-[#002d1b]">Send Formal Quotation & PDF</h2>
+                <p className="text-sm text-gray-500 mt-1">{selectedLead.name} &bull; {selectedLead.location}</p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setQuoteModalOpen(false)} 
+                className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-gray-100 rounded-full cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSendFormalQuote} className="p-6 space-y-6">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Attach Formal Quote / Proposal Document (PDF)
+                  </label>
+                  <span className="text-xs text-gray-500 font-medium">Max size: 500KB</span>
+                </div>
+
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  accept=".pdf,application/pdf" 
+                  onChange={handleFileChange} 
+                  className="hidden" 
+                />
+
+                {!selectedPdfFile ? (
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer group ${
+                      fileError 
+                        ? 'border-red-300 bg-red-50/40 hover:bg-red-50/60' 
+                        : isDragging 
+                          ? 'border-[#f36a1b] bg-orange-50/60 ring-2 ring-[#f36a1b]/20' 
+                          : 'border-gray-200 hover:border-[#f36a1b]/60 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="w-12 h-12 bg-orange-100 text-[#f36a1b] rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform shadow-xs">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      Click to upload or drag & drop PDF
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Format: <span className="font-semibold text-gray-700">.PDF only</span> (Maximum size: <span className="font-semibold text-gray-700">500 KB</span>)
+                    </p>
+                    {fileError && (
+                      <p className="mt-2.5 text-xs text-red-600 font-semibold bg-red-100/70 py-1 px-3 rounded-md inline-block">
+                        {fileError}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="border border-emerald-200 bg-emerald-50/60 rounded-xl p-4 flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-lg bg-red-100 text-red-600 flex items-center justify-center font-bold text-xs shrink-0 border border-red-200">
+                        PDF
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-900 truncate">
+                          {selectedPdfFile.name}
+                        </p>
+                        <p className="text-xs text-emerald-700 font-medium">
+                          {(selectedPdfFile.size / 1024).toFixed(1)} KB &bull; Verified & ready to attach
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        type="button" 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-xs font-semibold text-gray-600 hover:text-gray-900 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-xs hover:bg-gray-50 transition-colors cursor-pointer"
+                      >
+                        Change
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => { setSelectedPdfFile(null); setPdfDataUrl(null); setFileError(''); }}
+                        className="text-xs font-semibold text-red-600 hover:text-red-700 bg-white border border-red-200 p-1.5 rounded-lg shadow-xs hover:bg-red-50 transition-colors cursor-pointer"
+                        aria-label="Remove file"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">Message to Buyer (Optional)</label>
+                <textarea 
+                  rows={4} 
+                  value={quoteNotes}
+                  onChange={(e) => setQuoteNotes(e.target.value)}
+                  placeholder="Add pricing details, warranty, payment terms, or notes..." 
+                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b] resize-none"
+                ></textarea>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">Total Price Estimate</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
+                    <input 
+                      type="text" 
+                      value={quotePrice}
+                      onChange={(e) => setQuotePrice(e.target.value)}
+                      placeholder="0.00" 
+                      className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b]" 
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">Estimated Delivery Time</label>
+                  <input 
+                    type="text" 
+                    value={quoteDeliveryTime}
+                    onChange={(e) => setQuoteDeliveryTime(e.target.value)}
+                    placeholder="e.g. 14 Days" 
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b]" 
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-gray-100">
+                <p className="text-xs text-gray-500 italic">Quotation card and proposal document will be sent to the buyer.</p>
+                <div className="flex gap-3 justify-end">
+                  <button type="button" onClick={() => setQuoteModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">Cancel</button>
+                  <button type="submit" disabled={quoteUploadStatus !== 'idle'} className={`px-5 py-2.5 text-sm font-semibold text-white rounded-lg transition-all flex items-center justify-center cursor-pointer ${quoteUploadStatus === 'success' ? 'bg-green-600' : 'bg-[#002d1b] hover:bg-[#001f12]'} disabled:opacity-80`}>
+                    {quoteUploadStatus === 'idle' && <><Paperclip className="w-4 h-4 mr-2" /> Send Quote</>}
+                    {quoteUploadStatus === 'uploading' && 'Sending...'}
+                    {quoteUploadStatus === 'success' && <><CheckCircle2 className="w-4 h-4 mr-2" /> Sent Successfully</>}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

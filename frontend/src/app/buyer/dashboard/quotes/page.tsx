@@ -75,8 +75,11 @@ export default function BuyerQuotesPage() {
       try {
         const j = JSON.parse(lead.message);
         if (Array.isArray(j)) {
-          const qMsg = j.find((m: any) => m.type === 'quotation' || m.quotation);
-          if (qMsg) return qMsg.quotation || qMsg;
+          const qMsgs = j.filter((m: any) => m.type === 'quotation' || m.quotation);
+          if (qMsgs.length > 0) {
+            const latestQMsg = qMsgs[qMsgs.length - 1];
+            return latestQMsg.quotation || latestQMsg;
+          }
         }
       } catch (_) {}
     }

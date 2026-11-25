@@ -115,10 +115,11 @@ function QuotesContent() {
               details = j[0].content || details;
               if (j[0].product?.qty) qty = j[0].product.qty;
 
-              // Extract seller quotation if present
-              const qMsg = j.find((m: any) => m.type === 'quotation' || m.quotation);
-              if (qMsg) {
-                quotationOffer = qMsg.quotation || qMsg;
+              // Extract seller quotation if present (get latest quote)
+              const qMsgs = j.filter((m: any) => m.type === 'quotation' || m.quotation);
+              if (qMsgs.length > 0) {
+                const latestQ = qMsgs[qMsgs.length - 1];
+                quotationOffer = latestQ.quotation || latestQ;
               }
             }
           } catch (_) {}
@@ -128,7 +129,7 @@ function QuotesContent() {
             name: lead.products?.title || 'Product Inquiry',
             buyer: lead.buyer_name || 'Prospective Buyer',
             qty,
-            status: quotationOffer ? 'responded' : (lead.unread_count > 0 ? 'pending' : 'responded'),
+            status: quotationOffer ? 'responded' : 'pending',
             date: new Date(lead.created_at).toLocaleDateString(),
             details,
             location: lead.buyer_location || 'Online',
@@ -162,6 +163,25 @@ function QuotesContent() {
     };
   }, [supplierUser?.id]);
 
+  const openRespondModal = (item: any) => {
+    setSelectedItem(item);
+    setUploadStatus('idle');
+    setFileError('');
+    if (item.quotation) {
+      setQuotePrice(item.quotation.price ? String(item.quotation.price).replace('$', '') : '');
+      setQuoteDeliveryTime(item.quotation.deliveryTime || '');
+      setQuoteNotes(item.quotation.notes || '');
+      setPdfDataUrl(item.quotation.pdfUrl || null);
+    } else {
+      setQuotePrice('');
+      setQuoteDeliveryTime('');
+      setQuoteNotes('');
+      setSelectedPdfFile(null);
+      setPdfDataUrl(null);
+    }
+    setActiveModal('respond');
+  };
+
   useEffect(() => {
     const action = searchParams.get('action');
     const id = searchParams.get('id');
@@ -169,8 +189,7 @@ function QuotesContent() {
     if (action === 'respond' && id) {
       const quote = dbQuotes.find(q => String(q.id) === String(id)) || MOCK_QUOTES.find(q => String(q.id) === String(id));
       if (quote) {
-        setSelectedItem(quote);
-        setActiveModal('respond');
+        openRespondModal(quote);
         router.replace('/supplier/dashboard/quotes', { scroll: false });
       }
     }
@@ -386,7 +405,7 @@ function QuotesContent() {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Link
                       href={`/supplier/dashboard/all-leads?leadId=${item.id}`}
                       className="px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg hover:bg-emerald-100 transition-colors flex items-center text-sm font-medium"
@@ -397,23 +416,30 @@ function QuotesContent() {
                       onClick={() => { setSelectedItem(item); setActiveModal('viewRequest'); }}
                       className="px-3 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-[#002d1b] transition-colors flex items-center text-sm font-medium"
                     >
-                      <Eye className="w-4 h-4 mr-2" /> View Request
+                      <Eye className="w-4 h-4 mr-1.5" /> View Request
                     </button>
-                    {item.status === 'pending' && (
+                    {!item.quotation ? (
                       <button 
-                        onClick={() => { setSelectedItem(item); setUploadStatus('idle'); setActiveModal('respond'); }}
-                        className="px-4 py-2 bg-[#f36a1b] text-white rounded-lg hover:bg-[#d95a12] transition-colors flex items-center text-sm font-medium shadow-sm hover:shadow-md"
+                        onClick={() => openRespondModal(item)}
+                        className="px-4 py-2 bg-[#f36a1b] text-white rounded-lg hover:bg-[#d95a12] transition-colors flex items-center text-sm font-medium shadow-sm hover:shadow-md cursor-pointer"
                       >
                         Attach Quote & Respond <ChevronRight className="w-4 h-4 ml-1" />
                       </button>
-                    )}
-                    {item.status !== 'pending' && (
-                      <button 
-                        onClick={() => { setSelectedItem(item); setActiveModal('viewQuote'); }}
-                        className="px-4 py-2 bg-white border border-[#f36a1b] text-[#f36a1b] rounded-lg hover:bg-orange-50 transition-colors flex items-center text-sm font-medium"
-                      >
-                        View Sent Quote
-                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => { setSelectedItem(item); setActiveModal('viewQuote'); }}
+                          className="px-3 py-2 bg-white border border-[#f36a1b] text-[#f36a1b] rounded-lg hover:bg-orange-50 transition-colors flex items-center text-sm font-medium cursor-pointer"
+                        >
+                          View Sent Quote
+                        </button>
+                        <button 
+                          onClick={() => openRespondModal(item)}
+                          className="px-3 py-2 bg-[#002d1b] hover:bg-[#084C41] text-white rounded-lg transition-colors flex items-center text-sm font-medium shadow-xs cursor-pointer"
+                        >
+                          <Paperclip className="w-3.5 h-3.5 mr-1" /> Revise / Attach PDF
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -618,14 +644,16 @@ function QuotesContent() {
                     <MessageSquare className="w-4 h-4 mr-2" /> Open Chat Conversation
                   </Link>
                   <div className="flex gap-2">
-                    <button onClick={() => setActiveModal('none')} className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-colors">
+                    <button onClick={() => setActiveModal('none')} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-colors cursor-pointer">
                       Close
                     </button>
-                    {selectedItem?.status === 'pending' && (
-                      <button onClick={() => setActiveModal('respond')} className="px-6 py-2 bg-[#f36a1b] hover:bg-[#d95a12] text-white text-sm font-semibold rounded-lg transition-colors">
-                        Respond Now
-                      </button>
-                    )}
+                    <button 
+                      onClick={() => openRespondModal(selectedItem)} 
+                      className="px-5 py-2 bg-[#f36a1b] hover:bg-[#d95a12] text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Paperclip className="w-4 h-4" />
+                      {selectedItem?.quotation ? 'Revise Quote / PDF' : 'Attach Quote & Respond'}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -707,8 +735,15 @@ function QuotesContent() {
                   </div>
                 </div>
 
-                <div className="pt-4 flex justify-end">
-                  <button onClick={() => setActiveModal('none')} className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-colors">
+                <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-gray-100">
+                  <button 
+                    type="button"
+                    onClick={() => openRespondModal(selectedItem)}
+                    className="w-full sm:w-auto px-4 py-2 bg-[#f36a1b] hover:bg-[#d95a12] text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Paperclip className="w-4 h-4" /> Revise Quote / Attach New PDF
+                  </button>
+                  <button onClick={() => setActiveModal('none')} className="w-full sm:w-auto px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-colors cursor-pointer">
                     Close
                   </button>
                 </div>
