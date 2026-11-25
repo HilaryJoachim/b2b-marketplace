@@ -171,9 +171,10 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const registerSupplier = useCallback(async (user: SupplierUser, password?: string) => {
+    let finalUser = { ...user };
     if (user.email && password) {
       try {
-        await supabase.auth.signUp({
+        const { data: authData } = await supabase.auth.signUp({
           email: user.email,
           password: password,
           options: {
@@ -184,11 +185,33 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
             }
           }
         });
+
+        const targetId = authData?.user?.id || user.id;
+        finalUser = {
+          ...user,
+          id: targetId,
+        };
+
+        await supabase
+          .from('suppliers')
+          .upsert([
+            {
+              id: targetId,
+              email: user.email,
+              name: user.companyName || user.name,
+              company_name: user.companyName,
+            }
+          ], { onConflict: 'id' });
+
       } catch (err) {
         console.error("Failed to register supplier:", err);
       }
     }
-    setSupplierUser(user);
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('kifaru_supplier_user', JSON.stringify(finalUser));
+    }
+    setSupplierUser(finalUser);
   }, []);
 
   // ── Modal Controls ──

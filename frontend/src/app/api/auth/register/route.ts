@@ -42,8 +42,8 @@ export async function POST(request: Request) {
     });
 
     // 3. Construct the verification link
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const verifyLink = `${appUrl}/verify-email?token=${token}`;
+    const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const verifyLink = `${origin}/verify-email?token=${token}`;
 
     // 4. Send the email
     await transporter.sendMail({

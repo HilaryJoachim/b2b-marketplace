@@ -63,7 +63,7 @@ function VerifyEmailContent() {
     verifyToken();
   }, [token]);
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
 
@@ -80,12 +80,12 @@ function VerifyEmailContent() {
 
     if (verifiedUser) {
       if (registerSupplier) {
-        registerSupplier(verifiedUser, password);
+        await registerSupplier(verifiedUser, password);
       }
       setStatus('success');
       setTimeout(() => {
          router.push('/supplier/dashboard');
-      }, 2000);
+      }, 1500);
     }
   };
 
