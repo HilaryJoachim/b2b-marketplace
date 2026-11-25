@@ -45,26 +45,89 @@ export async function POST(request: Request) {
     const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const verifyLink = `${origin}/verify-email?token=${token}`;
 
-    // 4. Send the email
+    // 4. Send the email with both Plain Text and Transactional HTML
+    const currentYear = new Date().getFullYear();
+
     await transporter.sendMail({
-      from: `"KifaruTrade" <${process.env.SMTP_USER}>`, // sender address
-      to: email, // list of receivers
-      subject: "Verify your KifaruTrade Seller Account", // Subject line
-      html: `
-        <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #002d1b;">Welcome to KifaruTrade!</h2>
-          <p>Hi ${companyName},</p>
-          <p>Thank you for registering. You are just one step away from starting your <strong>31-day Starter Trial</strong> and reaching global buyers.</p>
-          <p>Please click the button below to verify your email address and activate your account:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${verifyLink}" style="background-color: #f36a1b; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Verify Email & Activate Account</a>
-          </div>
-          <p>If the button doesn't work, copy and paste this link into your browser:</p>
-          <p style="word-break: break-all; color: #666; font-size: 12px;">${verifyLink}</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #999;">If you didn't request this, you can safely ignore this email.</p>
-        </div>
-      `,
+      from: `"KifaruTrade" <${process.env.SMTP_USER}>`,
+      replyTo: `"KifaruTrade Support" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: "Confirm your email address - KifaruTrade",
+      headers: {
+        'X-Priority': '3',
+        'X-MSMail-Priority': 'Normal',
+        'Importance': 'Normal',
+        'X-Auto-Response-Suppress': 'OOF, AutoReply',
+      },
+      text: `Hi ${companyName},\n\nThank you for registering your business with KifaruTrade.\n\nPlease confirm your email address by opening the link below to set your password and activate your account:\n\n${verifyLink}\n\nThis verification link is valid for 24 hours.\n\nIf you did not create an account on KifaruTrade, you can safely ignore this email.\n\nBest regards,\nThe KifaruTrade Team\nsupport@kifarutrade.com`,
+      html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confirm your email address</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f7f9fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed; background-color: #f7f9fa; padding: 30px 10px;">
+    <tr>
+      <td align="center">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 540px; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 28px 32px; background-color: #002d1b; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">KifaruTrade</h1>
+              <p style="margin: 4px 0 0 0; color: rgba(255,255,255,0.7); font-size: 13px;">B2B Marketplace</p>
+            </td>
+          </tr>
+          <!-- Content -->
+          <tr>
+            <td style="padding: 32px 32px 28px 32px;">
+              <h2 style="margin: 0 0 16px 0; color: #002d1b; font-size: 18px; font-weight: 700;">Confirm your email address</h2>
+              <p style="margin: 0 0 14px 0; color: #4a5568; font-size: 15px; line-height: 1.6;">
+                Hi <strong>${companyName}</strong>,
+              </p>
+              <p style="margin: 0 0 24px 0; color: #4a5568; font-size: 15px; line-height: 1.6;">
+                Thank you for registering with KifaruTrade. Please click the button below to verify your email address, choose your password, and activate your seller profile:
+              </p>
+              
+              <!-- Button -->
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 26px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${verifyLink}" target="_blank" style="display: inline-block; background-color: #f36a1b; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px; text-align: center;">
+                      Verify Email &amp; Activate Account
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 24px 0 8px 0; color: #718096; font-size: 13px; line-height: 1.5;">
+                If the button above does not open, copy and paste this link into your web browser:
+              </p>
+              <p style="margin: 0 0 24px 0; font-size: 12px; line-height: 1.4; word-break: break-all;">
+                <a href="${verifyLink}" style="color: #f36a1b; text-decoration: underline;">${verifyLink}</a>
+              </p>
+              
+              <hr style="border: none; border-top: 1px solid #edf2f7; margin: 24px 0;" />
+              <p style="margin: 0; color: #a0aec0; font-size: 12px; line-height: 1.5;">
+                This link will expire in 24 hours. If you did not sign up for a KifaruTrade account, you can safely ignore this message.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid #edf2f7; text-align: center;">
+              <p style="margin: 0; color: #a0aec0; font-size: 12px;">
+                &copy; ${currentYear} KifaruTrade. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
     });
 
     return NextResponse.json({ message: 'Verification email sent' }, { status: 200 });

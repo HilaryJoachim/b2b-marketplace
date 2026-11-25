@@ -27,54 +27,12 @@ export default function SellWithUsPage() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // OTP verification state (if user received a verification code instead of clicking link)
-  const [otpCode, setOtpCode] = useState('');
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpError, setOtpError] = useState('');
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (isLogin) {
       setLoginData(prev => ({ ...prev, [name]: value }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode.trim()) {
-      setOtpError('Please enter the verification code.');
-      return;
-    }
-    setOtpLoading(true);
-    setOtpError('');
-
-    try {
-      // 1. Try verifying as signup OTP
-      let { data, error } = await supabase.auth.verifyOtp({
-        email: formData.email,
-        token: otpCode.trim(),
-        type: 'signup'
-      });
-
-      // 2. Fallback to 'email' type if 'signup' failed
-      if (error) {
-        const res2 = await supabase.auth.verifyOtp({
-          email: formData.email,
-          token: otpCode.trim(),
-          type: 'email'
-        });
-        if (res2.error) throw new Error(res2.error.message || error.message);
-        data = res2.data;
-      }
-
-      // If verified, proceed to set password
-      router.push('/supplier/set-password');
-    } catch (err: any) {
-      setOtpError(err.message || 'Invalid or expired verification code.');
-    } finally {
-      setOtpLoading(false);
     }
   };
 
@@ -95,7 +53,7 @@ export default function SellWithUsPage() {
     }
 
     try {
-      // 1. Send the official verification link email via our registration endpoint
+      // Send the official verification link email via our registration endpoint
       const registerRes = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -123,53 +81,24 @@ export default function SellWithUsPage() {
   if (status === 'success') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 className="w-10 h-10 text-green-600" />
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xs">
+            <CheckCircle2 className="w-10 h-10 text-emerald-600" />
           </div>
-          <h2 className="text-3xl font-bold text-[#002d1b] mb-4">Check Your Email</h2>
-          <p className="text-gray-600 mb-6 leading-relaxed">
-            We've sent a verification link to <span className="font-semibold text-gray-900">{formData.email}</span>. 
-            Click the <strong className="text-gray-900">Verify Email & Activate Account</strong> link in your email to set your password and start your 31-day Starter Trial.
+          <h2 className="text-3xl font-extrabold text-[#002d1b] mb-3">Check Your Email</h2>
+          <p className="text-gray-600 mb-6 leading-relaxed text-sm">
+            We've sent a verification link to <span className="font-bold text-gray-900">{formData.email}</span>. 
+            Please click the <strong className="text-[#f36a1b]">Verify Email &amp; Activate Account</strong> link in that email to set your password and access your dashboard.
           </p>
 
-          {/* OTP Code Input Box in case user received a verification code */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-6 text-left">
-            <p className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-              Received a verification code?
+          <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 mb-6 text-left">
+            <p className="text-xs text-orange-900 font-medium leading-relaxed">
+              <strong>Tip:</strong> If you don't see the email within 1-2 minutes, please check your <strong>Spam</strong> or <strong>Promotions</strong> folder and mark it as <em>"Not Spam"</em>.
             </p>
-            <p className="text-xs text-gray-500 mb-3">
-              If you received a 6 to 8-digit verification code in your email, enter it here:
-            </p>
-            <form onSubmit={handleVerifyOtp} className="space-y-3">
-              <input
-                type="text"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-                placeholder="Enter verification code (e.g. 62993516)"
-                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-center font-mono tracking-widest focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b] outline-none"
-                maxLength={10}
-              />
-              {otpError && (
-                <p className="text-xs text-red-600 font-semibold">{otpError}</p>
-              )}
-              <button
-                type="submit"
-                disabled={otpLoading || !otpCode.trim()}
-                className="w-full py-2.5 bg-[#f36a1b] hover:bg-[#d95a12] text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-              >
-                {otpLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify Code & Set Password'}
-              </button>
-            </form>
           </div>
 
-          <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 mb-6">
-            <p className="text-xs text-orange-800 font-medium">
-              Don't see it? Check your spam folder or wait a moment for delivery.
-            </p>
-          </div>
           <Link href="/">
-            <button className="w-full py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors cursor-pointer">
+            <button className="w-full py-3 bg-[#002d1b] hover:bg-[#001f12] text-white font-bold rounded-xl transition-colors cursor-pointer shadow-xs text-sm">
               Return to Homepage
             </button>
           </Link>
