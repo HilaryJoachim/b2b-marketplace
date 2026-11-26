@@ -52,29 +52,68 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    const fetchProfile = async (userId: string, email: string) => {
+    const fetchProfile = async (userId: string, email: string, userMeta?: Record<string, unknown>) => {
       try {
-        const { data, error } = await supabase
+        const cleanEmail = email.trim().toLowerCase();
+
+        // 1. Check suppliers by UUID or email
+        let { data, error } = await supabase
           .from('suppliers')
           .select('*')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
+
+        if (!data) {
+          const { data: byEmail } = await supabase
+            .from('suppliers')
+            .select('*')
+            .ilike('email', cleanEmail)
+            .maybeSingle();
+          data = byEmail;
+        }
+
+        // 2. Auto-heal: If user has a valid Supabase session but no row in suppliers, create it
+        if (!data) {
+          const compName = (userMeta?.company_name as string) || (userMeta?.name as string) || cleanEmail.split('@')[0];
+          const newProfile = {
+            id: userId,
+            email: cleanEmail,
+            name: compName,
+            company_name: compName,
+            phone: (userMeta?.phone as string) || null,
+            location: (userMeta?.country as string) || null,
+          };
+          const { data: inserted, error: insertErr } = await supabase
+            .from('suppliers')
+            .upsert([newProfile], { onConflict: 'id' })
+            .select('*')
+            .maybeSingle();
+
+          if (!insertErr && inserted) {
+            data = inserted;
+          } else {
+            data = newProfile;
+          }
+        }
           
         if (!mounted) return;
 
-        if (data && !error) {
-          setSupplierUser({
-            id: data.id,
-            name: data.name || email,
-            email: data.email,
-            companyName: data.company_name,
+        if (data) {
+          const loadedUser: SupplierUser = {
+            id: data.id || userId,
+            name: data.name || data.company_name || cleanEmail,
+            email: data.email || cleanEmail,
+            companyName: data.company_name || data.name,
             phone: data.phone || undefined,
             location: data.location || undefined,
             logoUrl: data.logo_url || undefined,
             role: "supplier",
-          });
+          };
+          setSupplierUser(loadedUser);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('kifaru_supplier_user', JSON.stringify(loadedUser));
+          }
         } else {
-          // If they are not in the suppliers table, they are not a supplier.
           setSupplierUser(null);
         }
       } catch (err) {
@@ -96,15 +135,28 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
       if (session?.user) {
-        fetchProfile(session.user.id, session.user.email || '');
+        fetchProfile(session.user.id, session.user.email || '', session.user.user_metadata);
       } else {
-        setSupplierUser(null);
+        // Fallback: Check localStorage if Supabase Auth session expired or loading
+        if (typeof window !== 'undefined') {
+          const stored = localStorage.getItem('kifaru_supplier_user');
+          if (stored) {
+            try {
+              setSupplierUser(JSON.parse(stored));
+            } catch {
+              setSupplierUser(null);
+            }
+          } else {
+            setSupplierUser(null);
+          }
+        } else {
+          setSupplierUser(null);
+        }
         setIsSupplierLoading(false);
       }
     }).catch((err) => {
       console.error("Session get error:", err);
       if (mounted) {
-        setSupplierUser(null);
         setIsSupplierLoading(false);
       }
     });
@@ -114,7 +166,7 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
       (_event, session) => {
         if (!mounted) return;
         if (session?.user) {
-          fetchProfile(session.user.id, session.user.email || '');
+          fetchProfile(session.user.id, session.user.email || '', session.user.user_metadata);
         } else {
           setSupplierUser(null);
           setIsSupplierLoading(false);
@@ -134,25 +186,73 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
       email: string,
       password: string
     ): Promise<{ success: boolean; error?: string }> => {
-      // 1. Verify this email actually exists in the suppliers table
-      const { data: supplierCheck, error: checkError } = await supabase
-        .from('suppliers')
-        .select('id')
-        .eq('email', email)
-        .single();
-        
-      if (checkError || !supplierCheck) {
-         return { success: false, error: "This email is not registered as a seller account." };
-      }
+      const cleanEmail = email.trim().toLowerCase();
 
-      // 2. Perform the actual login
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
+      // 1. Authenticate with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
         password,
       });
 
-      if (error) {
-        return { success: false, error: error.message };
+      if (authError || !authData.user) {
+        if (authError?.message?.toLowerCase().includes("invalid login credentials")) {
+          return { success: false, error: "Invalid email or password. Please verify your credentials." };
+        }
+        return { success: false, error: authError?.message || "Failed to log in." };
+      }
+
+      const user = authData.user;
+
+      // 2. Fetch or auto-heal profile in suppliers table
+      let { data: supplierProfile } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!supplierProfile) {
+        const { data: byEmail } = await supabase
+          .from('suppliers')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .maybeSingle();
+        supplierProfile = byEmail;
+      }
+
+      if (!supplierProfile) {
+        const companyName = user.user_metadata?.company_name || user.user_metadata?.name || cleanEmail.split('@')[0];
+        const newRecord = {
+          id: user.id,
+          email: cleanEmail,
+          name: companyName,
+          company_name: companyName,
+          phone: user.user_metadata?.phone || null,
+          location: user.user_metadata?.country || null,
+        };
+
+        const { data: created } = await supabase
+          .from('suppliers')
+          .upsert([newRecord], { onConflict: 'id' })
+          .select('*')
+          .maybeSingle();
+
+        supplierProfile = created || newRecord;
+      }
+
+      const loadedUser: SupplierUser = {
+        id: supplierProfile.id || user.id,
+        name: supplierProfile.name || supplierProfile.company_name || cleanEmail,
+        email: supplierProfile.email || cleanEmail,
+        companyName: supplierProfile.company_name || supplierProfile.name,
+        phone: supplierProfile.phone || undefined,
+        location: supplierProfile.location || undefined,
+        logoUrl: supplierProfile.logo_url || undefined,
+        role: "supplier",
+      };
+
+      setSupplierUser(loadedUser);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('kifaru_supplier_user', JSON.stringify(loadedUser));
       }
 
       return { success: true };
@@ -163,46 +263,78 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
   // ── Logout ──
   const supplierLogout = useCallback(async () => {
     await supabase.auth.signOut();
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('kifaru_supplier_user');
+    }
     setSupplierUser(null);
   }, []);
 
   const updateSupplierUser = useCallback((updates: Partial<SupplierUser>) => {
-    setSupplierUser(prev => prev ? { ...prev, ...updates } : null);
+    setSupplierUser(prev => {
+      if (!prev) return null;
+      const updated = { ...prev, ...updates };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('kifaru_supplier_user', JSON.stringify(updated));
+      }
+      return updated;
+    });
   }, []);
 
   const registerSupplier = useCallback(async (user: SupplierUser, password?: string) => {
     let finalUser = { ...user };
-    if (user.email && password) {
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+
+    if (cleanEmail && password) {
       try {
+        let targetId = '';
+
         const { data: authData } = await supabase.auth.signUp({
-          email: user.email,
+          email: cleanEmail,
           password: password,
           options: {
             data: {
               company_name: user.companyName,
               name: user.name,
+              country: user.location,
+              phone: user.phone,
               role: 'supplier',
             }
           }
         });
 
-        const targetId = authData?.user?.id || user.id;
-        finalUser = {
-          ...user,
-          id: targetId,
-        };
+        if (authData?.user?.id) {
+          targetId = authData.user.id;
+        } else {
+          // If already created, sign in to retrieve valid UUID
+          const { data: signInData } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password: password,
+          });
+          if (signInData?.user?.id) {
+            targetId = signInData.user.id;
+          }
+        }
 
-        await supabase
-          .from('suppliers')
-          .upsert([
-            {
-              id: targetId,
-              email: user.email,
-              name: user.companyName || user.name,
-              company_name: user.companyName,
-            }
-          ], { onConflict: 'id' });
+        if (targetId) {
+          finalUser = {
+            ...user,
+            id: targetId,
+            email: cleanEmail,
+          };
 
+          await supabase
+            .from('suppliers')
+            .upsert([
+              {
+                id: targetId,
+                email: cleanEmail,
+                name: user.companyName || user.name || cleanEmail.split('@')[0],
+                company_name: user.companyName || user.name || cleanEmail.split('@')[0],
+                phone: user.phone || null,
+                location: user.location || null,
+              }
+            ], { onConflict: 'id' });
+        }
       } catch (err) {
         console.error("Failed to register supplier:", err);
       }

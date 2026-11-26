@@ -42,10 +42,12 @@ function VerifyEmailContent() {
 
         if (res.ok) {
           const supplierData: SupplierUser = {
-            id: "sup_" + Math.random().toString(36).substr(2, 9),
+            id: "",
             name: data.user.companyName,
             email: data.user.email,
             companyName: data.user.companyName,
+            phone: data.user.phone,
+            location: data.user.country,
             role: "supplier"
           };
           setVerifiedUser(supplierData);
