@@ -19,10 +19,11 @@ import { useRouter } from "next/navigation";
 export default function SupplierDashboardPage() {
   const router = useRouter();
   const { supplierUser, isSupplierLoading } = useSupplierAuth();
-  const isNewUser = supplierUser?.id !== 'sup_demo_001';
 
   const [leads, setLeads] = useState<any[]>([]);
   const [loadingLeads, setLoadingLeads] = useState(true);
+  const [productCount, setProductCount] = useState<number>(0);
+  const [profileViews, setProfileViews] = useState<number>(0);
 
   // Gate: redirect to login page if not authenticated
   useEffect(() => {
@@ -31,9 +32,38 @@ export default function SupplierDashboardPage() {
     }
   }, [isSupplierLoading, supplierUser, router]);
 
-  // Fetch real leads for this seller
+  // Fetch real leads and statistics for this seller
   useEffect(() => {
     if (!supplierUser) return;
+
+    const fetchDashboardStats = async () => {
+      try {
+        if (supplierUser.id === 'sup_demo_001') {
+          setProductCount(4);
+          setProfileViews(128);
+          return;
+        }
+
+        // 1. Fetch real product count for this supplier
+        const { count: pCount } = await supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .eq('supplier_id', supplierUser.id);
+        
+        setProductCount(pCount || 0);
+
+        // 2. Fetch real profile views from suppliers table
+        const { data: supData } = await supabase
+          .from('suppliers')
+          .select('views')
+          .eq('id', supplierUser.id)
+          .maybeSingle();
+
+        setProfileViews(supData?.views || 0);
+      } catch (err) {
+        console.error('Failed to load dashboard stats:', err);
+      }
+    };
 
     const fetchDashboardLeads = async () => {
       try {
@@ -65,15 +95,23 @@ export default function SupplierDashboardPage() {
     };
 
     fetchDashboardLeads();
+    fetchDashboardStats();
 
     const channel = supabase
       .channel('supplier_dashboard_leads')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => {
         fetchDashboardLeads();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        fetchDashboardStats();
+      })
       .subscribe();
 
-    const interval = setInterval(fetchDashboardLeads, 4000);
+    const interval = setInterval(() => {
+      fetchDashboardLeads();
+      fetchDashboardStats();
+    }, 6000);
+
     return () => {
       supabase.removeChannel(channel);
       clearInterval(interval);
@@ -164,10 +202,16 @@ export default function SupplierDashboardPage() {
             </div>
           </div>
           <div className="flex items-baseline justify-between">
-            <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{isNewUser ? '128' : '1,284'}</h3>
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100/60 px-2 py-0.5 rounded-full">
-              <TrendingUp className="w-3 h-3" /> +12% this month
-            </span>
+            <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{profileViews}</h3>
+            {profileViews > 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100/60 px-2 py-0.5 rounded-full">
+                <TrendingUp className="w-3 h-3" /> Real-time views
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                0 total views
+              </span>
+            )}
           </div>
         </div>
 
@@ -180,9 +224,12 @@ export default function SupplierDashboardPage() {
             </div>
           </div>
           <div className="flex items-baseline justify-between">
-            <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{isNewUser ? '1' : '45'}</h3>
-            <Link href="/supplier/dashboard/products" className="text-xs font-semibold text-[#f36a1b] hover:text-[#d95a12] flex items-center gap-0.5">
-              Manage inventory &rarr;
+            <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{productCount}</h3>
+            <Link 
+              href={productCount > 0 ? "/supplier/dashboard/products" : "/supplier/dashboard/add-product"} 
+              className="text-xs font-semibold text-[#f36a1b] hover:text-[#d95a12] flex items-center gap-0.5"
+            >
+              {productCount > 0 ? 'Manage inventory →' : 'Add first product →'}
             </Link>
           </div>
         </div>

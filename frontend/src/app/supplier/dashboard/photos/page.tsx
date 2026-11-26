@@ -134,11 +134,24 @@ export default function SupplierPhotosDocsPage() {
     setLoading(false);
   };
 
+  const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+  const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !supplierUser || supplierUser.id === 'sup_demo_001') return;
     
-    setIsUploading(true);
     const file = e.target.files[0];
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
+    const maxSize = isPdf ? MAX_PDF_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
+    const maxLabel = isPdf ? '10 MB' : '5 MB';
+
+    if (file.size > maxSize) {
+      e.target.value = '';
+      alert(`File "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is ${maxLabel}. This file was not uploaded.`);
+      return;
+    }
+
+    setIsUploading(true);
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random()}.${fileExt}`;
     const filePath = `${supplierUser.id}/${fileName}`;
@@ -147,7 +160,11 @@ export default function SupplierPhotosDocsPage() {
       const { error: uploadError } = await supabase.storage.from('supplier-media').upload(filePath, file);
       
       if (uploadError) {
-        alert("Upload error (Storage bucket might not exist): " + uploadError.message);
+        if (uploadError.message?.toLowerCase().includes('maximum allowed size') || (uploadError as any).statusCode === '413') {
+          alert(`File "${file.name}" exceeds Supabase's storage size limit. Please upload a file under ${maxLabel}.`);
+        } else {
+          alert("Upload error: " + uploadError.message);
+        }
       } else {
         const { data: { publicUrl } } = supabase.storage.from('supplier-media').getPublicUrl(filePath);
         
@@ -160,8 +177,9 @@ export default function SupplierPhotosDocsPage() {
         
         await fetchMedia();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert("Upload failed: " + (err.message || 'Unknown error'));
     } finally {
       setIsUploading(false);
     }

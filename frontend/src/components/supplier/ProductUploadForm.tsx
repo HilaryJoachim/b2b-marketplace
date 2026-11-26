@@ -2,16 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { 
-  Camera, Video, FileText, Plus, CheckCircle2, Loader2, Trash2
+  Camera, Video, FileText, Plus, CheckCircle2, Loader2, Trash2, AlertCircle, X
 } from "lucide-react";
 import { useSupplierAuth } from "@/context/SupplierAuthContext";
 import { supabase } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB max per image
+const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB max for PDF brochure
+
 export default function ProductUploadForm() {
   const [activeTab, setActiveTab] = useState<'basic' | 'specs'>('basic');
   const [score, setScore] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const [specifications, setSpecifications] = useState<{key: string, value: string}[]>([]);
   
   const [title, setTitle] = useState('');
@@ -72,33 +76,39 @@ export default function ProductUploadForm() {
     let pdfUrl = null;
     
     try {
-      // Helper function to upload files
-      const uploadFile = async (file: File, folder: string) => {
+      // Helper function to upload files with clear attribution
+      const uploadFile = async (file: File, folder: string, label: string) => {
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
         const filePath = `${supplierUser.id}/${folder}/${fileName}`;
         
         const { error: uploadError } = await supabase.storage.from('supplier-media').upload(filePath, file);
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          if (uploadError.message?.toLowerCase().includes('maximum allowed size') || (uploadError as any).statusCode === '413') {
+            throw new Error(`${label} ("${file.name}", ${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeded Supabase storage limit. Please choose a file under 5 MB.`);
+          }
+          throw new Error(`${label} ("${file.name}") failed: ${uploadError.message}`);
+        }
         
         const { data: { publicUrl } } = supabase.storage.from('supplier-media').getPublicUrl(filePath);
         return publicUrl;
       };
 
       // 1. Upload main image
-      imageUrl = await uploadFile(imageFile, 'main');
+      imageUrl = await uploadFile(imageFile, 'main', 'Main Photo');
 
       // Upload extra images
-      for (const file of extraImages) {
+      for (let i = 0; i < extraImages.length; i++) {
+        const file = extraImages[i];
         if (file) {
-          const url = await uploadFile(file, 'extra');
+          const url = await uploadFile(file, 'extra', `Additional Photo ${i + 1}`);
           extraImagesUrls.push(url);
         }
       }
 
       // Upload PDF
       if (pdfFile) {
-        pdfUrl = await uploadFile(pdfFile, 'pdfs');
+        pdfUrl = await uploadFile(pdfFile, 'pdfs', 'PDF Brochure');
       }
 
       // 2. Generate Slug
@@ -144,26 +154,75 @@ export default function ProductUploadForm() {
       {/* 1. Left Column: Media Center */}
       <div className="lg:col-span-3 space-y-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm h-full">
-          <h3 className="text-sm font-bold text-gray-900 mb-4 pb-2 border-b border-gray-100">Product Media</h3>
+          <div className="flex items-center justify-between pb-2 mb-3 border-b border-gray-100">
+            <h3 className="text-sm font-bold text-gray-900">Product Media</h3>
+            <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              Max 5 MB / Photo
+            </span>
+          </div>
+
+          {/* Media Error Alert Box */}
+          {mediaError && (
+            <div className="mb-3 bg-red-50 border border-red-200 text-red-700 p-2.5 rounded-lg text-xs flex items-start gap-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-bold block text-red-800">Size Limit Exceeded</span>
+                <span className="leading-tight block text-[11px] mt-0.5">{mediaError}</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setMediaError(null)} 
+                className="text-red-400 hover:text-red-700"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           
           <div className="grid grid-cols-3 gap-3">
             {/* Main Photo */}
             <label className="col-span-3 aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-[#f36a1b] hover:bg-orange-50/50 hover:text-[#f36a1b] transition-all cursor-pointer group relative overflow-hidden">
               {imagePreview ? (
-                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                <div className="relative w-full h-full">
+                  <img src={imagePreview} alt="Main Preview" className="w-full h-full object-cover" />
+                  <span className="absolute bottom-2 left-2 bg-black/75 text-white text-[10px] px-1.5 py-0.5 rounded font-mono shadow-xs">
+                    Main • {imageFile ? `${(imageFile.size / (1024 * 1024)).toFixed(1)} MB` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      ev.preventDefault();
+                      setImageFile(null);
+                      setImagePreview(null);
+                      setMediaError(null);
+                    }}
+                    className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full shadow-md transition-transform hover:scale-110"
+                    title="Remove main photo"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               ) : (
                 <>
                   <Camera className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-medium">Add Main Photo</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5">(Max 5 MB)</span>
                 </>
               )}
               <input 
                 type="file" 
                 className="hidden" 
-                accept="image/*"
+                accept="image/png,image/jpeg,image/webp,image/jpg"
                 onChange={(e) => {
+                  setMediaError(null);
                   if (e.target.files && e.target.files[0]) {
                     const file = e.target.files[0];
+                    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                      e.target.value = '';
+                      setMediaError(`Main Photo "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is 5 MB. Image was NOT attached.`);
+                      return;
+                    }
                     setImageFile(file);
                     setImagePreview(URL.createObjectURL(file));
                   }
@@ -175,17 +234,49 @@ export default function ProductUploadForm() {
             {[0, 1, 2].map(index => (
               <label key={index} className="aspect-square border border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-300 hover:border-[#f36a1b] hover:text-[#f36a1b] hover:bg-orange-50/50 transition-all cursor-pointer relative overflow-hidden group">
                 {extraPreviews[index] ? (
-                  <img src={extraPreviews[index] as string} alt={`Extra ${index}`} className="w-full h-full object-cover" />
+                  <div className="relative w-full h-full">
+                    <img src={extraPreviews[index] as string} alt={`Extra ${index + 1}`} className="w-full h-full object-cover" />
+                    <span className="absolute bottom-1 left-1 bg-black/75 text-white text-[9px] px-1 py-0.2 rounded font-mono">
+                      {extraImages[index] ? `${(extraImages[index]!.size / (1024 * 1024)).toFixed(1)} MB` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        ev.preventDefault();
+                        const newImages = [...extraImages];
+                        newImages[index] = null;
+                        setExtraImages(newImages);
+                        const newPreviews = [...extraPreviews];
+                        newPreviews[index] = null;
+                        setExtraPreviews(newPreviews);
+                        setMediaError(null);
+                      }}
+                      className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-0.5 rounded-full shadow-md transition-transform hover:scale-110"
+                      title="Remove photo"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
                 ) : (
-                  <Camera className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                  <div className="flex flex-col items-center">
+                    <Camera className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                    <span className="text-[9px] text-gray-400 mt-1">Photo {index + 2}</span>
+                  </div>
                 )}
                 <input 
                   type="file" 
                   className="hidden" 
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/webp,image/jpg"
                   onChange={(e) => {
+                    setMediaError(null);
                     if (e.target.files && e.target.files[0]) {
                       const file = e.target.files[0];
+                      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                        e.target.value = '';
+                        setMediaError(`Photo ${index + 2} "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is 5 MB. Image was NOT attached.`);
+                        return;
+                      }
                       const newImages = [...extraImages];
                       newImages[index] = file;
                       setExtraImages(newImages);
@@ -207,34 +298,73 @@ export default function ProductUploadForm() {
                 const url = prompt("Enter YouTube Video URL:");
                 if (url) setYoutubeUrl(url);
               }}
-              className={`border border-dashed ${youtubeUrl ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-300 text-gray-400 hover:border-blue-500 hover:text-blue-500 hover:bg-blue-50'} rounded-lg p-3 flex flex-col items-center justify-center transition-all cursor-pointer text-center`}
+              className={`border border-dashed ${youtubeUrl ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-300 text-gray-400 hover:border-blue-500 hover:text-blue-500 hover:bg-blue-50'} rounded-lg p-3 flex flex-col items-center justify-center transition-all cursor-pointer text-center relative`}
             >
               <Video className="w-5 h-5 mb-1" />
               <span className="text-[10px] font-medium uppercase tracking-wide truncate w-full px-1">
                 {youtubeUrl ? "Video Added" : "Add Video"}
               </span>
+              {youtubeUrl && (
+                <button
+                  type="button"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    setYoutubeUrl('');
+                  }}
+                  className="absolute top-1 right-1 text-gray-400 hover:text-red-600"
+                  title="Remove Video"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </button>
-            <label className={`border border-dashed ${pdfFile ? 'border-red-500 text-red-600 bg-red-50' : 'border-gray-300 text-gray-400 hover:border-red-500 hover:text-red-500 hover:bg-red-50'} rounded-lg p-3 flex flex-col items-center justify-center transition-all cursor-pointer text-center`}>
+            <label className={`border border-dashed ${pdfFile ? 'border-red-500 text-red-600 bg-red-50' : 'border-gray-300 text-gray-400 hover:border-red-500 hover:text-red-500 hover:bg-red-50'} rounded-lg p-3 flex flex-col items-center justify-center transition-all cursor-pointer text-center relative`}>
               <FileText className="w-5 h-5 mb-1" />
               <span className="text-[10px] font-medium uppercase tracking-wide truncate w-full px-1">
-                {pdfFile ? pdfFile.name : "Add PDF"}
+                {pdfFile ? `${pdfFile.name} (${(pdfFile.size / (1024 * 1024)).toFixed(1)} MB)` : "Add PDF (Max 10MB)"}
               </span>
               <input 
                 type="file" 
                 className="hidden" 
                 accept=".pdf"
                 onChange={(e) => {
+                  setMediaError(null);
                   if (e.target.files && e.target.files[0]) {
-                    setPdfFile(e.target.files[0]);
+                    const file = e.target.files[0];
+                    if (file.size > MAX_PDF_SIZE_BYTES) {
+                      e.target.value = '';
+                      setMediaError(`PDF "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed PDF size is 10 MB.`);
+                      return;
+                    }
+                    setPdfFile(file);
                   }
                 }}
               />
+              {pdfFile && (
+                <button
+                  type="button"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    ev.preventDefault();
+                    setPdfFile(null);
+                  }}
+                  className="absolute top-1 right-1 text-gray-400 hover:text-red-600"
+                  title="Remove PDF"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </label>
           </div>
           
-          <p className="text-[10px] text-gray-400 mt-4 text-center">
-            Upload up to 4 photos. First photo is the main display.
-          </p>
+          <div className="mt-4 p-2 bg-gray-50 border border-gray-200/80 rounded-lg text-center">
+            <p className="text-[11px] font-semibold text-gray-700">
+              📸 Max 5 MB per photo • Max 10 MB for PDF
+            </p>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              JPG, PNG, WEBP. First photo is the main display.
+            </p>
+          </div>
         </div>
       </div>
 

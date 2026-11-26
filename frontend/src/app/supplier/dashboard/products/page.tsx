@@ -69,6 +69,10 @@ export default function SupplierProductsPage() {
   const [editExtraPreviews, setEditExtraPreviews] = useState<(string | null)[]>([null, null, null]);
   const [editPdfFile, setEditPdfFile] = useState<File | null>(null);
   const [editYoutubeUrl, setEditYoutubeUrl] = useState('');
+  const [editMediaError, setEditMediaError] = useState<string | null>(null);
+
+  const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+  const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
   useEffect(() => {
     if (activeModal === 'editProduct' && selectedProduct) {
@@ -589,26 +593,74 @@ export default function SupplierProductsPage() {
                     </div>
                     
                     <div className="space-y-3">
-                      <label className="block text-sm font-semibold text-gray-700">Product Images</label>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-sm font-semibold text-gray-700">Product Images</label>
+                        <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                          Max 5 MB / Photo
+                        </span>
+                      </div>
+
+                      {editMediaError && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 p-2.5 rounded-lg text-xs flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <span className="font-bold block">Size Limit Exceeded:</span>
+                            <span className="leading-tight block text-[11px] mt-0.5">{editMediaError}</span>
+                          </div>
+                          <button 
+                            type="button" 
+                            onClick={() => setEditMediaError(null)} 
+                            className="text-red-400 hover:text-red-700"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
                       <label className="block border-2 border-dashed border-gray-200 rounded-xl h-[160px] flex flex-col items-center justify-center text-center p-4 hover:border-[#f36a1b] hover:bg-orange-50/50 transition-colors cursor-pointer group relative overflow-hidden">
                         {editImagePreview ? (
-                          <img src={editImagePreview} alt="Main Image" className="w-full h-full object-contain" />
+                          <div className="relative w-full h-full flex items-center justify-center">
+                            <img src={editImagePreview} alt="Main Image" className="w-full h-full object-contain" />
+                            <span className="absolute bottom-2 left-2 bg-black/75 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+                              Main • {editImageFile ? `${(editImageFile.size / (1024 * 1024)).toFixed(1)} MB` : 'Existing'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                ev.preventDefault();
+                                setEditImageFile(null);
+                                setEditImagePreview(null);
+                                setEditMediaError(null);
+                              }}
+                              className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full shadow-md"
+                              title="Remove photo"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         ) : (
                           <>
                             <div className="w-12 h-12 bg-orange-50 text-[#f36a1b] rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                               <ImageIcon className="w-6 h-6" />
                             </div>
                             <p className="text-sm font-semibold text-gray-700">Upload main image</p>
-                            <p className="text-xs text-gray-400 mt-1">Drag & drop or click</p>
+                            <p className="text-xs text-gray-400 mt-1">Max 5 MB (JPG, PNG, WEBP)</p>
                           </>
                         )}
                         <input 
                           type="file" 
                           className="hidden" 
-                          accept="image/*"
+                          accept="image/png,image/jpeg,image/webp,image/jpg"
                           onChange={(e) => {
+                            setEditMediaError(null);
                             if (e.target.files && e.target.files[0]) {
                               const file = e.target.files[0];
+                              if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                                e.target.value = '';
+                                setEditMediaError(`Main Photo "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is 5 MB. Image was NOT attached.`);
+                                return;
+                              }
                               setEditImageFile(file);
                               setEditImagePreview(URL.createObjectURL(file));
                             }
@@ -621,17 +673,46 @@ export default function SupplierProductsPage() {
                         {[0, 1, 2].map(index => (
                           <label key={index} className="aspect-square border border-dashed border-gray-200 rounded-lg flex items-center justify-center text-gray-300 hover:border-[#f36a1b] hover:text-[#f36a1b] hover:bg-orange-50/50 transition-all cursor-pointer relative overflow-hidden group">
                             {editExtraPreviews[index] ? (
-                              <img src={editExtraPreviews[index] as string} alt={`Extra ${index}`} className="w-full h-full object-cover" />
+                              <div className="relative w-full h-full">
+                                <img src={editExtraPreviews[index] as string} alt={`Extra ${index}`} className="w-full h-full object-cover" />
+                                <span className="absolute bottom-1 left-1 bg-black/75 text-white text-[9px] px-1 py-0.2 rounded font-mono">
+                                  {editExtraImages[index] ? `${(editExtraImages[index]!.size / (1024 * 1024)).toFixed(1)} MB` : ''}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    ev.preventDefault();
+                                    const nextImgs = [...editExtraImages];
+                                    nextImgs[index] = null;
+                                    setEditExtraImages(nextImgs);
+                                    const nextPrev = [...editExtraPreviews];
+                                    nextPrev[index] = null;
+                                    setEditExtraPreviews(nextPrev);
+                                    setEditMediaError(null);
+                                  }}
+                                  className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-0.5 rounded-full shadow-md"
+                                  title="Remove photo"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
                             ) : (
                               <Camera className="w-5 h-5 group-hover:scale-110 transition-transform" />
                             )}
                             <input 
                               type="file" 
                               className="hidden" 
-                              accept="image/*"
+                              accept="image/png,image/jpeg,image/webp,image/jpg"
                               onChange={(e) => {
+                                setEditMediaError(null);
                                 if (e.target.files && e.target.files[0]) {
                                   const file = e.target.files[0];
+                                  if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                                    e.target.value = '';
+                                    setEditMediaError(`Photo ${index + 2} "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is 5 MB. Image was NOT attached.`);
+                                    return;
+                                  }
                                   const newImages = [...editExtraImages];
                                   newImages[index] = file;
                                   setEditExtraImages(newImages);
@@ -654,28 +735,62 @@ export default function SupplierProductsPage() {
                             const url = prompt("Enter YouTube Video URL:");
                             if (url) setEditYoutubeUrl(url);
                           }}
-                          className={`border border-dashed ${editYoutubeUrl ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-400 hover:border-blue-500 hover:text-blue-500 hover:bg-blue-50'} rounded-lg p-3 flex flex-col items-center justify-center transition-all cursor-pointer text-center`}
+                          className={`border border-dashed ${editYoutubeUrl ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-400 hover:border-blue-500 hover:text-blue-500 hover:bg-blue-50'} rounded-lg p-3 flex flex-col items-center justify-center transition-all cursor-pointer text-center relative`}
                         >
                           <Video className="w-5 h-5 mb-1" />
                           <span className="text-[10px] font-medium uppercase tracking-wide truncate w-full px-1">
                             {editYoutubeUrl ? "Video Added" : "Add Video"}
                           </span>
+                          {editYoutubeUrl && (
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setEditYoutubeUrl('');
+                              }}
+                              className="absolute top-1 right-1 text-gray-400 hover:text-red-600"
+                              title="Remove Video"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
                         </button>
-                        <label className={`block border border-dashed ${editPdfFile ? 'border-red-500 text-red-600 bg-red-50' : 'border-gray-200 text-gray-400 hover:border-red-500 hover:text-red-500 hover:bg-red-50'} rounded-lg p-3 flex flex-col items-center justify-center transition-all cursor-pointer text-center`}>
+                        <label className={`block border border-dashed ${editPdfFile ? 'border-red-500 text-red-600 bg-red-50' : 'border-gray-200 text-gray-400 hover:border-red-500 hover:text-red-500 hover:bg-red-50'} rounded-lg p-3 flex flex-col items-center justify-center transition-all cursor-pointer text-center relative`}>
                           <FileText className="w-5 h-5 mb-1" />
                           <span className="text-[10px] font-medium uppercase tracking-wide truncate w-full px-1">
-                            {editPdfFile ? editPdfFile.name : "Add PDF"}
+                            {editPdfFile ? `${editPdfFile.name} (${(editPdfFile.size / (1024 * 1024)).toFixed(1)} MB)` : (selectedProduct.pdfUrl ? "PDF Attached" : "Add PDF (Max 10MB)")}
                           </span>
                           <input 
                             type="file" 
                             className="hidden" 
                             accept=".pdf"
                             onChange={(e) => {
+                              setEditMediaError(null);
                               if (e.target.files && e.target.files[0]) {
-                                setEditPdfFile(e.target.files[0]);
+                                const file = e.target.files[0];
+                                if (file.size > MAX_PDF_SIZE_BYTES) {
+                                  e.target.value = '';
+                                  setEditMediaError(`PDF "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is 10 MB.`);
+                                  return;
+                                }
+                                setEditPdfFile(file);
                               }
                             }}
                           />
+                          {editPdfFile && (
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                ev.preventDefault();
+                                setEditPdfFile(null);
+                              }}
+                              className="absolute top-1 right-1 text-gray-400 hover:text-red-600"
+                              title="Remove PDF"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
                         </label>
                       </div>
                     </div>
