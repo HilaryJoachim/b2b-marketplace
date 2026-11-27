@@ -72,30 +72,9 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
           data = byEmail;
         }
 
-        // 2. Auto-heal: If user has a valid Supabase session but no row in suppliers, create it
-        if (!data) {
-          const compName = (userMeta?.company_name as string) || (userMeta?.name as string) || cleanEmail.split('@')[0];
-          const newProfile = {
-            id: userId,
-            email: cleanEmail,
-            name: compName,
-            company_name: compName,
-            phone: (userMeta?.phone as string) || null,
-            location: (userMeta?.country as string) || null,
-          };
-          const { data: inserted, error: insertErr } = await supabase
-            .from('suppliers')
-            .upsert([newProfile], { onConflict: 'id' })
-            .select('*')
-            .maybeSingle();
-
-          if (!insertErr && inserted) {
-            data = inserted;
-          } else {
-            data = newProfile;
-          }
-        }
-          
+        // If user is found in the suppliers table, load their profile.
+        // Otherwise, they are NOT a supplier (e.g. they may be a buyer).
+        // NEVER auto-create a supplier profile from an arbitrary user session!
         if (!mounted) return;
 
         if (data) {
@@ -115,6 +94,9 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
           }
         } else {
           setSupplierUser(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('kifaru_supplier_user');
+          }
         }
       } catch (err) {
         console.error("Failed to fetch supplier profile:", err);

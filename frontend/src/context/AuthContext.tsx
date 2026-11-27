@@ -61,29 +61,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    const fetchProfile = async (userId: string, email: string, userMeta?: any) => {
+    const fetchProfile = async (userId: string, email: string, userMeta?: any, existingBuyerData?: any) => {
       const metaName = userMeta?.full_name || userMeta?.name || userMeta?.user_name;
       
-      // Check buyers table
-      const { data, error } = await supabase
-        .from('buyers')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      let buyerRecord = existingBuyerData;
+      if (!buyerRecord) {
+        const { data } = await supabase
+          .from('buyers')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+        buyerRecord = data;
+      }
         
       if (!mounted) return;
 
-      const resolvedName = data?.name || metaName || (email ? email.split("@")[0] : "Kim Sako");
+      const resolvedName = buyerRecord?.name || metaName || (email ? email.split("@")[0] : "Kim Sako");
 
-      if (data) {
+      if (buyerRecord) {
         setUser({
-          id: data.id,
+          id: buyerRecord.id,
           name: resolvedName,
-          email: data.email || email,
-          phone: data.phone || userMeta?.phone,
-          country: data.country || userMeta?.country,
-          companyName: data.company_name,
-          address: data.address,
+          email: buyerRecord.email || email,
+          phone: buyerRecord.phone || userMeta?.phone,
+          country: buyerRecord.country || userMeta?.country,
+          companyName: buyerRecord.company_name,
+          address: buyerRecord.address,
         });
       } else {
         setUser({
@@ -102,44 +105,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     };
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const handleSession = async (session: any) => {
       if (!mounted) return;
-      if (session?.user) {
-        // Double check they aren't a supplier
-        supabase.from('suppliers').select('id').eq('id', session.user.id).single().then(({ data: supplierData }) => {
-          if (!mounted) return;
-          if (supplierData) {
-            // This is a supplier session, don't set the buyer user!
-            setUser(null);
-            setIsLoading(false);
-          } else {
-            fetchProfile(session.user.id, session.user.email || '', session.user.user_metadata);
-          }
-        });
-      } else {
+      if (!session?.user) {
         setUser(null);
         setIsLoading(false);
+        return;
       }
+
+      const userId = session.user.id;
+      const email = session.user.email || '';
+      const userMeta = session.user.user_metadata;
+
+      // 1. Check if user is registered in buyers table
+      const { data: buyerData } = await supabase
+        .from('buyers')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (buyerData) {
+        // Confirmed buyer profile exists!
+        fetchProfile(userId, email, userMeta, buyerData);
+        return;
+      }
+
+      // 2. If not in buyers table, check if this is an explicit supplier role
+      if (userMeta?.role === 'supplier') {
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+
+      // 3. Double check suppliers table
+      const { data: supplierData } = await supabase
+        .from('suppliers')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (supplierData) {
+        // Pure supplier session without a buyer profile
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+
+      // 4. Default: User logged in via buyer flow (e.g. OTP)
+      fetchProfile(userId, email, userMeta);
+    };
+
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSession(session);
     });
 
     // Listen for auth changes (login, logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        if (!mounted) return;
-        if (session?.user) {
-          supabase.from('suppliers').select('id').eq('id', session.user.id).single().then(({ data: supplierData }) => {
-            if (!mounted) return;
-            if (supplierData) {
-              // Ignore if it's a supplier logging in
-            } else {
-              fetchProfile(session.user.id, session.user.email || '', session.user.user_metadata);
-            }
-          });
-        } else {
-          setUser(null);
-          setIsLoading(false);
-        }
+        handleSession(session);
       }
     );
 
@@ -151,22 +175,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── OTP Logic ──
   const checkUserExists = useCallback(async (email: string): Promise<boolean> => {
+    const cleanEmail = email.trim().toLowerCase();
+
     // Check if email exists in either buyers or suppliers using a secure RPC function
-    // This bypasses RLS so unauthenticated users can check if their email is registered
-    const { data, error } = await supabase.rpc('check_email_exists', { p_email: email });
+    const { data, error } = await supabase.rpc('check_email_exists', { p_email: cleanEmail });
     
     if (error) {
       console.error("Error checking email:", error);
-      // Fallback to true if RPC fails so we don't accidentally expose the registration form
-      // if there's a network issue. Better yet, throw so the user knows.
-      throw new Error("Unable to verify email at this time.");
+      // Fallback: check buyers table directly
+      const { data: buyerRow } = await supabase
+        .from('buyers')
+        .select('id')
+        .ilike('email', cleanEmail)
+        .maybeSingle();
+      return !!buyerRow;
     }
     
-    if (data?.is_supplier) {
+    // If the email is registered as a buyer (in auth.users or buyers table),
+    // they are an existing buyer! Proceed with OTP login.
+    if (data?.is_buyer) {
+      return true;
+    }
+
+    // Only throw if they are strictly registered as a supplier and NOT as a buyer
+    if (data?.is_supplier && !data?.is_buyer) {
       throw new Error("This email is registered as a seller account. Please use the Supplier Login.");
     }
 
-    return !!data?.is_buyer;
+    // New user
+    return false;
   }, []);
 
   const requestOTP = useCallback(
@@ -233,7 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           const { error: insertError } = await supabase
             .from('buyers')
-            .insert(newBuyerProfile);
+            .upsert([newBuyerProfile], { onConflict: 'id' });
 
           if (insertError) {
             console.error("Error creating buyer profile:", insertError);
