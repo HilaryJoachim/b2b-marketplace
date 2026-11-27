@@ -38,24 +38,74 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <h1 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900 dark:text-white">{product.title}</h1>
           <PriceDisplay priceUsd={product.price} className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6 block" />
 
-          <div className="prose prose-gray dark:prose-invert">
-            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. This product is ideal for businesses
-              seeking quality and reliability. Built to withstand tough conditions while maintaining optimal performance.
+          {/* Product Description */}
+          <div className="prose prose-gray dark:prose-invert my-2">
+            <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm sm:text-base whitespace-pre-line">
+              {product.description || `High-quality ${product.title} supplied by ${product.supplier}. Built to withstand tough industrial conditions while maintaining optimal performance. Contact seller for technical details, customization, and pricing.`}
             </p>
           </div>
 
-          <div className="mt-auto pt-8">
+          <div className="mt-auto pt-6">
             {(product.youtube_url || product.pdf_url) && (
-              <div className="flex flex-wrap gap-3 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
                 {product.youtube_url && (
-                  <a href={product.youtube_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
-                    <Video className="w-4 h-4" /> Watch Video
+                  <a
+                    href={product.youtube_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3.5 p-3 rounded-xl border border-red-100 bg-gradient-to-r from-red-50/70 to-white hover:from-red-50 hover:to-red-100/50 hover:border-red-300 shadow-xs hover:shadow-md transition-all duration-200 group cursor-pointer"
+                  >
+                    {/* YouTube Red Play Icon */}
+                    <div className="w-11 h-11 rounded-xl bg-[#FF0000] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                      <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
+                        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                      </svg>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-bold text-gray-900 group-hover:text-red-600 transition-colors truncate">
+                          Watch Video
+                        </span>
+                        <span className="text-[10px] uppercase font-bold text-red-600 bg-red-100/90 px-1.5 py-0.5 rounded">
+                          Video
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate mt-0.5">
+                        Product demo &amp; operation &rarr;
+                      </p>
+                    </div>
                   </a>
                 )}
+
                 {product.pdf_url && (
-                  <a href={product.pdf_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-lg transition-colors">
-                    <FileText className="w-4 h-4" /> Download PDF
+                  <a
+                    href={product.pdf_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3.5 p-3 rounded-xl border border-rose-100 bg-gradient-to-r from-rose-50/70 to-white hover:from-rose-50 hover:to-rose-100/50 hover:border-rose-300 shadow-xs hover:shadow-md transition-all duration-200 group cursor-pointer"
+                  >
+                    {/* Adobe Red PDF Icon */}
+                    <div className="w-11 h-11 rounded-xl bg-[#E5252A] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                      <svg className="w-5 h-5 fill-none stroke-current" strokeWidth="2.2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <path d="M12 18v-6"/>
+                        <path d="m9 15 3 3 3-3"/>
+                      </svg>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-bold text-gray-900 group-hover:text-rose-600 transition-colors truncate">
+                          Download PDF
+                        </span>
+                        <span className="text-[10px] uppercase font-bold text-rose-600 bg-rose-100/90 px-1.5 py-0.5 rounded">
+                          PDF
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate mt-0.5">
+                        Specifications &amp; brochure &rarr;
+                      </p>
+                    </div>
                   </a>
                 )}
               </div>

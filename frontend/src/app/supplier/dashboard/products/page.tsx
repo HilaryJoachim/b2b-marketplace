@@ -120,6 +120,7 @@ export default function SupplierProductsPage() {
         score: p.score || 0,
         price: p.price,
         specsMissing: p.specs_missing || 0,
+        description: p.description || '',
         image: p.image_url,
         extraImages: p.extra_images || [],
         youtubeUrl: p.youtube_url || '',
@@ -148,6 +149,7 @@ export default function SupplierProductsPage() {
       const category = formData.get('category') as string;
       const status = formData.get('status') as string;
       const price = formData.get('price') as string;
+      const description = (formData.get('description') as string) || '';
 
       let imageUrl = selectedProduct.image; // Keep existing by default
 
@@ -200,6 +202,7 @@ export default function SupplierProductsPage() {
           category,
           status,
           price,
+          description: description || null,
           image_url: imageUrl,
           extra_images: extraImagesUrls.length > 0 ? extraImagesUrls : null,
           youtube_url: editYoutubeUrl || null,
@@ -588,6 +591,17 @@ export default function SupplierProductsPage() {
                           placeholder="e.g. $25,000 / Set"
                           defaultValue={selectedProduct.price || ''}
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b] focus:bg-white transition-all"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-semibold text-gray-700">Product / Service Description</label>
+                        <textarea 
+                          name="description"
+                          rows={4}
+                          placeholder="Describe your product, its features, uses, capacity, and benefits..."
+                          defaultValue={selectedProduct.description || ''}
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#f36a1b]/20 focus:border-[#f36a1b] focus:bg-white transition-all resize-y"
                         />
                       </div>
                     </div>
