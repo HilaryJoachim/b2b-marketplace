@@ -85,7 +85,7 @@ export default function SubscriptionsPage() {
           <div className="mb-6">
             <h3 className="text-lg font-bold text-[#002d1b] mb-2">Starter</h3>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-extrabold text-[#002d1b]">${isYearly ? '150' : '15'}</span>
+              <span className="text-3xl font-extrabold text-[#002d1b]">${isYearly ? '200' : '20'}</span>
               <span className="text-gray-500 font-medium">/ {isYearly ? 'year' : 'month'}</span>
             </div>
             <p className="text-sm text-gray-500 mt-2">For small businesses getting started.</p>
@@ -116,7 +116,7 @@ export default function SubscriptionsPage() {
               <ShieldCheck className="w-5 h-5 text-[#f36a1b]" />
             </h3>
             <div className="flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold text-[#002d1b]">${isYearly ? '350' : '35'}</span>
+              <span className="text-4xl font-extrabold text-[#002d1b]">${isYearly ? '400' : '40'}</span>
               <span className="text-gray-500 font-medium">/ {isYearly ? 'year' : 'month'}</span>
             </div>
             <p className="text-sm text-gray-600 mt-2">Build your presence and reach serious buyers across Africa and global markets.</p>
@@ -153,7 +153,7 @@ export default function SubscriptionsPage() {
           <div className="mb-6 relative z-10">
             <h3 className="text-lg font-bold !text-white mb-2">Premium</h3>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-extrabold !text-white">${isYearly ? '750' : '75'}</span>
+              <span className="text-3xl font-extrabold !text-white">${isYearly ? '800' : '80'}</span>
               <span className="text-gray-200 font-medium">/ {isYearly ? 'year' : 'month'}</span>
             </div>
             <p className="text-sm text-gray-200 mt-2">For serious exporters, manufacturers & established suppliers</p>

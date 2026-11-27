@@ -10,7 +10,6 @@ import {
   MessageSquare, 
   TrendingUp, 
   Package, 
-  Image as ImageIcon, 
   Settings, 
   FileText 
 } from 'lucide-react';
@@ -23,7 +22,6 @@ const SIDEBAR_ITEMS = [
   { icon: MessageSquare, label: 'All Leads', href: '/supplier/dashboard/all-leads' },
   { icon: FileText, label: 'Quotes', href: '/supplier/dashboard/quotes' },
   { icon: Package, label: 'Products', href: '/supplier/dashboard/products' },
-  { icon: ImageIcon, label: 'Photos & Docs', href: '/supplier/dashboard/photos' },
 ];
 
 const SupplierSidebar = () => {

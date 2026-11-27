@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   CloudUpload, Image as ImageIcon, FileText, FileSpreadsheet, 
   FileArchive, File, MoreVertical, Info, ChevronDown, Loader2
@@ -95,6 +96,11 @@ const MOCK_FILES = [
 ];
 
 export default function SupplierPhotosDocsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/supplier/dashboard/products');
+  }, [router]);
+
   const [activeFilter, setActiveFilter] = useState('all');
   const { supplierUser } = useSupplierAuth();
   
