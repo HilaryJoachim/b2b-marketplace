@@ -11,7 +11,12 @@ export default function ProductCardSkeleton() {
       <div className="h-4 bg-gray-200 rounded-md w-3/4 mb-2" />
       <div className="h-4 bg-gray-200 rounded-md w-1/2 mb-4" />
       {/* Price */}
-      <div className="mt-auto h-5 bg-gray-200 rounded-md w-1/3" />
+      <div className="mt-auto h-5 bg-gray-200 rounded-md w-1/3 mb-2.5" />
+      {/* Company Name & Verified Badge skeleton */}
+      <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+        <div className="h-3.5 bg-gray-200 rounded w-1/2" />
+        <div className="h-4 bg-gray-200 rounded-full w-14" />
+      </div>
     </div>
   );
 }

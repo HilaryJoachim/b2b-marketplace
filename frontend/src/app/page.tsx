@@ -157,6 +157,8 @@ function HomeContent() {
                         title={product.title}
                         price={product.price}
                         slug={product.slug}
+                        supplier={product.supplier}
+                        isVerified={true}
                       />
                     </div>
                   ))}

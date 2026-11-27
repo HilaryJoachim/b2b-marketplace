@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getProductBySlug, getRecommendedProducts } from "@/lib/data";
 import ProductActionButtons from "@/components/ProductActionButtons";
+import FeaturedProductCard from "@/components/FeaturedProductCard";
 import ProductTabs from "@/components/product/ProductTabs";
 import ProductAttributes from "@/components/product/ProductAttributes";
 import ProductDescription from "@/components/product/ProductDescription";
@@ -146,19 +147,16 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         <h2 className="text-2xl font-bold mb-8 text-gray-900 dark:text-white">Other recommendations for your business</h2>
         <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
           {recommended.map((prod) => (
-            <Link key={prod.slug} href={`/product/${prod.slug}`} className="group block bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-4 rounded-xl hover:shadow-md transition-shadow">
-              <div className="rounded-lg overflow-hidden mb-4 bg-gray-50 dark:bg-gray-800 aspect-video">
-                <Image 
-                  src={prod.image} 
-                  alt={prod.title} 
-                  width={300} 
-                  height={200} 
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-primary transition-colors">{prod.title}</h3>
-              <PriceDisplay priceUsd={prod.price} className="text-lg font-bold text-gray-700 dark:text-gray-300 block" />
-            </Link>
+            <div key={prod.slug} className="h-full flex flex-col">
+              <FeaturedProductCard
+                image={prod.image}
+                title={prod.title}
+                price={prod.price}
+                slug={prod.slug}
+                supplier={prod.supplier}
+                isVerified={true}
+              />
+            </div>
           ))}
         </div>
       </div>
