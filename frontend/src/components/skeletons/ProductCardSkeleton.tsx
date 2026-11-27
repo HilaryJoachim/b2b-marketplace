@@ -4,13 +4,14 @@
  */
 export default function ProductCardSkeleton() {
   return (
-    <div className="bg-white p-4 rounded-lg shadow animate-pulse">
+    <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-100 animate-pulse flex flex-col h-full w-full">
       {/* Image placeholder */}
-      <div className="w-full aspect-[3/2] bg-gray-200 rounded-lg" />
+      <div className="w-full aspect-square bg-gray-200 rounded-lg mb-3.5" />
       {/* Title */}
-      <div className="mt-3 h-5 bg-gray-200 rounded-md w-3/4" />
+      <div className="h-4 bg-gray-200 rounded-md w-3/4 mb-2" />
+      <div className="h-4 bg-gray-200 rounded-md w-1/2 mb-4" />
       {/* Price */}
-      <div className="mt-2 h-4 bg-gray-200 rounded-md w-1/3" />
+      <div className="mt-auto h-5 bg-gray-200 rounded-md w-1/3" />
     </div>
   );
 }

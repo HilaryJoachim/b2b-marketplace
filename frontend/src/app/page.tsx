@@ -149,7 +149,7 @@ function HomeContent() {
                   {visibleProducts.map((product, index) => (
                     <div
                       key={product.slug + index}
-                      className="animate-fadeInUp"
+                      className="animate-fadeInUp h-full flex flex-col"
                       style={{ animationDelay: `${index * 60}ms` }}
                     >
                       <FeaturedProductCard
